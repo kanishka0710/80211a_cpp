@@ -1,0 +1,19 @@
+Start testing: Apr 07 21:16 Pacific Daylight Time
+----------------------------------------------------------
+1/1 Testing: forward_error_correction_scrambler
+1/1 Test: forward_error_correction_scrambler
+Command: "C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build/test_forward_error_correction.exe"
+Directory: C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build
+"forward_error_correction_scrambler" start time: Apr 07 21:16 Pacific Daylight Time
+Output:
+----------------------------------------------------------
+802.11 DATA scrambler: first 127 PRBS bits match golden sequence (all-ones seed).
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"forward_error_correction_scrambler" end time: Apr 07 21:16 Pacific Daylight Time
+"forward_error_correction_scrambler" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Apr 07 21:16 Pacific Daylight Time

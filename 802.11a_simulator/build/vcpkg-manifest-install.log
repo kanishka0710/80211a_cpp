@@ -1,0 +1,40 @@
+Detecting compiler hash for triplet x64-windows...
+Compiler found: C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/cl.exe
+Detecting compiler hash for triplet x64-mingw-dynamic...
+Compiler found: C:/Users/Kanishka/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/x86_64-w64-mingw32-g++.exe
+The following packages are already installed:
+  * cimg:x64-mingw-dynamic@3.7.2
+    fftw3:x64-mingw-dynamic@3.3.10#10
+    matplotplusplus:x64-mingw-dynamic@1.2.1
+  * nodesoup:x64-mingw-dynamic@2023-06-12
+  * vcpkg-cmake:x64-windows@2024-04-23
+  * vcpkg-cmake-config:x64-windows@2024-05-23
+fftw3 provides CMake targets:
+
+  # this is heuristically generated, and may not be correct
+  find_package(FFTW3 CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE FFTW3::fftw3)
+
+  find_package(FFTW3f CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE FFTW3::fftw3f)
+
+  find_package(FFTW3l CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE FFTW3::fftw3l)
+
+fftw3 provides pkg-config modules:
+
+  # fast Fourier transform library
+  fftw3
+
+  # fast Fourier transform library
+  fftw3f
+
+  # fast Fourier transform library
+  fftw3l
+
+The package matplotplusplus provides CMake targets:
+
+    find_package(Matplot++ CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE Matplot++::cimg  Matplot++::matplot)
+
+All requested installations completed successfully in: 631 us

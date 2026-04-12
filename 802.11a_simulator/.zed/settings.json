@@ -1,0 +1,10 @@
+{
+  "project_name": "802.11a Simulator",
+  "lsp": {
+    "clangd": {
+      "initialization_options": {
+        "compile-commands-dir": "build",
+      },
+    },
+  },
+}

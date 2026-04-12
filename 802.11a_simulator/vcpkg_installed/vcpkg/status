@@ -1,0 +1,88 @@
+Package: vcpkg-cmake-config
+Version: 2024-05-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: f1e029b2fac7bcc4b4ce044a46d70789267b088ffc07890eea8a426a17e1c8f6
+Status: install ok installed
+
+Package: vcpkg-cmake
+Version: 2024-04-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: c3ec5f1d508636f2914bb7dda58ba3423cefc5cd94f6d2ca7a891667cf7ce0de
+Status: install ok installed
+
+Package: fftw3
+Version: 3.3.10
+Port-Version: 10
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 32a744bae99153487c1c4a471c515142722b5decbc75d62443ee8c798761ce21
+Description: FFTW is a C subroutine library for computing the discrete Fourier transform (DFT) in one or more dimensions, of arbitrary input size, and of both real and complex data (as well as of even/odd data, i.e. the discrete cosine/sine transforms or DCT/DST).
+Status: purge ok not-installed
+
+Package: nodesoup
+Version: 2023-06-12
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: ab0e281b3d8b749f8131da6efadfc1c60b68a02a143e7a4b976274617e602fa4
+Description: Force-directed graph layout with Fruchterman-Reingold
+Status: purge ok not-installed
+
+Package: cimg
+Version: 3.7.2
+Depends: vcpkg-cmake
+Architecture: x64-windows
+Multi-Arch: same
+Abi: bee03b0d96732d5bed4cd5b6c6cc03469e29d551375fb6544b09190b6c149f61
+Description: The CImg Library is a small, open-source, and modern C++ toolkit for image processing
+Status: purge ok not-installed
+
+Package: matplotplusplus
+Version: 1.2.1
+Depends: cimg, nodesoup, vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 11ef04d16e9b58604c59489cb79bdbef599c02ec069aeef747da87e3328065f5
+Description: A C++ graphics library for data visualization
+Status: purge ok not-installed
+
+Package: fftw3
+Version: 3.3.10
+Port-Version: 10
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x64-mingw-dynamic
+Multi-Arch: same
+Abi: 228e03cfd2ad44bac3f560ffbb9a0faa11d7d4593592babb0662977341cf341f
+Description: FFTW is a C subroutine library for computing the discrete Fourier transform (DFT) in one or more dimensions, of arbitrary input size, and of both real and complex data (as well as of even/odd data, i.e. the discrete cosine/sine transforms or DCT/DST).
+Status: install ok installed
+
+Package: nodesoup
+Version: 2023-06-12
+Depends: vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x64-mingw-dynamic
+Multi-Arch: same
+Abi: 5b60dd800c49b4246c699b9f75c4298a3e895d776e168bea740daec4b62452f4
+Description: Force-directed graph layout with Fruchterman-Reingold
+Status: install ok installed
+
+Package: cimg
+Version: 3.7.2
+Depends: vcpkg-cmake:x64-windows
+Architecture: x64-mingw-dynamic
+Multi-Arch: same
+Abi: 7f5f81973adea1859ac1fb6e61087fa3cef6b4378198e2587172a1f92e678e31
+Description: The CImg Library is a small, open-source, and modern C++ toolkit for image processing
+Status: install ok installed
+
+Package: matplotplusplus
+Version: 1.2.1
+Depends: cimg, nodesoup, vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows
+Architecture: x64-mingw-dynamic
+Multi-Arch: same
+Abi: 77d09e28b86cec53b7882863b7d6f548bdb52f8bb2fad896cfa7b760da5916f4
+Description: A C++ graphics library for data visualization
+Status: install ok installed
+

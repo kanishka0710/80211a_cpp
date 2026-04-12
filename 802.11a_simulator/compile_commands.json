@@ -1,0 +1,14 @@
+[
+{
+  "directory": "C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build",
+  "command": "C:\\Users\\Kanishka\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\g++.exe  @CMakeFiles/wifi_phy.dir/includes_CXX.rsp -std=gnu++23 -Wall -Wextra -Wpedantic -o CMakeFiles\\wifi_phy.dir\\src\\link_settings.cpp.obj -c C:\\Users\\Kanishka\\paracausal-toolkit\\802.11a_simulator\\src\\link_settings.cpp",
+  "file": "C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/src/link_settings.cpp",
+  "output": "CMakeFiles/wifi_phy.dir/src/link_settings.cpp.obj"
+},
+{
+  "directory": "C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build",
+  "command": "C:\\Users\\Kanishka\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\g++.exe  @CMakeFiles/wifi_phy.dir/includes_CXX.rsp -std=gnu++23 -Wall -Wextra -Wpedantic -o CMakeFiles\\wifi_phy.dir\\src\\ofdm_modulator.cpp.obj -c C:\\Users\\Kanishka\\paracausal-toolkit\\802.11a_simulator\\src\\ofdm_modulator.cpp",
+  "file": "C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/src/ofdm_modulator.cpp",
+  "output": "CMakeFiles/wifi_phy.dir/src/ofdm_modulator.cpp.obj"
+}
+]
