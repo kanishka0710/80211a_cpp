@@ -2,21 +2,34 @@
 #include <vector>
 #include <complex>
 #include <cstdint>
-#include <memory_resource>
+#include "phy/helpers.h"
 #include "phy/link_settings.h"
+#include "phy/pilot_utils.h"
 
 namespace wifi80211a {
 
-    class OFDMModulator {
+    /// Output of `OFDMModulator::demodulate`: full FFT bins per symbol plus pilot taps.
+    struct OFDMDemodResult {
+        /// Concatenated per-symbol FFT outputs, bin order [0 .. nFFT-1] repeated for each symbol.
+        complexVector freq_bins;
+
+        /// Received pilot subcarriers in `LinkSettings::getPilotPositions()` order
+        /// (−21, −7, +7, +21), four complexes per OFDM symbol.
+        complexVector pilots;
+
+        /// Expected (reference) pilot values in the same order as `pilots`, computed from
+        /// the pilot LFSR and per-subcarrier polarity weights during demodulation.
+        /// Dividing `pilots[i]` by `reference_pilots[i]` gives the channel estimate at
+        /// that pilot subcarrier.
+        complexVector reference_pilots;
+    };
+
+    class OFDMModule {
     public:
-        OFDMModulator() = default;
-        std::pmr::vector<std::complex<double>> modulate(LinkSettings link_settings, std::pmr::vector<std::complex<double>> data);
-
-    private:
-        // 7-bit LFSR for pilot polarity, poly x^7 + x^4 + 1, init all-ones
-        uint8_t pilot_lfsr = 0x7F;
-
-        // Returns +1 or -1 and advances the LFSR by one step
-        double next_pilot_polarity();
+        OFDMModule() = default;
+        static complexVector modulate(const LinkSettings& link_settings,
+            const complexVector& data, PilotLFSR pilotLfsr);
+        static OFDMDemodResult demodulate(const LinkSettings& link_settings,
+            const complexVector& data);
     };
 }

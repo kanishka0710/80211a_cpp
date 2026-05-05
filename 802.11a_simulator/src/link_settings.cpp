@@ -10,27 +10,22 @@ LinkSettings::LinkSettings(ModulationTypes modulation_type_arg,
       coding_rate(coding_rate_arg)
 {}
 
-double LinkSettings::getCodingRate() const {
-    switch(coding_rate) {
-        case wifi80211a::CodingRates::R12: return 1.0 / 2.0;
-        case wifi80211a::CodingRates::R23: return 2.0 / 3.0;
-        case wifi80211a::CodingRates::R34: return 3.0 / 4.0;
-    }
-    return 0.0;
+CodingRates LinkSettings::getCodingRate() const {
+    return coding_rate;
 }
 ModulationTypes LinkSettings::getModulationType() const {return modulation_type;}
-int8_t LinkSettings::getErrorCorrectingCode() const {return error_correcting_code;}
-int8_t LinkSettings::getNumSubcarriers() const {return num_subcarriers;}
+int LinkSettings::getErrorCorrectingCode() const {return error_correcting_code;}
+int LinkSettings::getNumSubcarriers() const {return num_subcarriers;}
 double LinkSettings::getOFDMSymbolDuration() const {return ofdm_symbol_duration;}
 double LinkSettings::getOccupiedBandwidth() const {return occupied_bandwidth;}
 double LinkSettings::getGuardInterval() const {return guard_interval;}
-int8_t LinkSettings::getNumberOfPilots() const {return num_pilots;}
-int8_t LinkSettings::getNFFT() const {return nFFT;}
-int8_t LinkSettings::getCPLenData() const {return cp_len_data;}
-int8_t LinkSettings::getCPLenTraining() const {return cp_len_training;}
+int LinkSettings::getNumberOfPilots() const {return num_pilots;}
+int LinkSettings::getNFFT() const {return nFFT;}
+int LinkSettings::getCPLenData() const {return cp_len_data;}
+int LinkSettings::getCPLenTraining() const {return cp_len_training;}
 double LinkSettings::getT() const{return T;}
 
-int16_t LinkSettings::getNCPBS() const
+int LinkSettings::getNCPBS() const
 {
     return bits_per_subcarrier.at(modulation_type) * (num_subcarriers - num_pilots);
 }

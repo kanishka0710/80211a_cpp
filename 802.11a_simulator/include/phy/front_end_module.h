@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "link_settings.h"
+#include "phy/helpers.h"
 
 namespace wifi80211a
 {
@@ -15,17 +16,38 @@ namespace wifi80211a
     class FrontEndModule {
     public:
         FrontEndModule() = default;
-        std::pmr::vector<std::complex<double>> pulse_shape(const std::pmr::vector<std::complex<double>> &signal, const double& T);
-        std::vector<double> iq_modulate(const std::pmr::vector<std::complex<double>> &signal, const double& T) const;
+
+        // ── TX chain ─────────────────────────────────────────────────────────
+
+        /// Upsamples by sps_ then applies the RRC pulse-shaping filter.
+        complexVector pulse_shape(const complexVector& signal, const double& T);
+
+        /// Mixes complex baseband up to a real passband signal at fc = 5.8 GHz.
+        std::vector<double> iq_modulate(const complexVector& signal, const double& T) const;
+
+        // ── RX chain ─────────────────────────────────────────────────────────
+
+        /// Downconverts a real passband signal back to complex baseband.
+        /// Input must be std::vector<double> — the direct output of iq_modulate.
+        complexVector iq_demodulate(const std::vector<double>& signal, const double& T) const;
+
+        /// Applies the RRC matched filter (completing the Nyquist RC response
+        /// end-to-end) then downsamples by sps_ to recover 1× rate OFDM symbols.
+        /// Combined TX + RX group delay ((M-1) samples at 4× rate) is compensated
+        /// automatically so the output aligns with OFDM symbol boundaries.
+        complexVector matched_filter(const complexVector& signal);
 
     private:
-        std::vector<double> generate_raised_cosine_(const double& T);
+        /// Generates the Root Raised Cosine impulse response (length span_*sps_+1).
+        /// Uses normalised time (T = 1 symbol period) so no T argument is needed.
+        std::vector<double> generate_rrc_() const;
+
         static double sinc_(double x);
         static int next_pow_of_2_(unsigned int x);
 
-        const int sps_ = 4; // Samples per symbol
-        const double beta_ = 0.25; // raised cosine beta
-        const int span_ = 5; // each raised cosine spans 10 symbols
+        const int    sps_  = 4;    // samples per symbol (upsampling factor)
+        const double beta_ = 0.25; // RRC roll-off factor
+        const int    span_ = 5;    // filter spans ±span_ symbol periods
     };
 }
 

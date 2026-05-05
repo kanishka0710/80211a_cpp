@@ -42,16 +42,27 @@ namespace wifi80211a
             CodingRates coding_rate = CodingRates::R12,
             std::uint8_t scrambler_seed_7bit = 0);
 
+        static std::vector<int> performFECRX(std::vector<int>& data_bits, CodingRates rate, std::uint8_t scrambler_seed_7bit);
+
         /// Returns the first `n` raw PRBS bits from the scrambler LFSR starting
         /// at `seed_7bit`, without XORing against any input data.
         static std::vector<int> data_scrambler_prbs(std::size_t n, std::uint8_t seed_7bit);
 
     private:
+
+        inline static int trellis_A[64][2] = {};
+        inline static int trellis_B[64][2] = {};
+        inline static int next_states[64][2] = {};
+        inline static bool trellis_ready_ = false;
+
         static std::vector<int> scramble_(std::vector<int> bits, std::uint8_t seed_7bit) ;
         static int LFSRStep_(std::vector<int>& regs);
         static std::vector<int> append_convolutional_tail_(std::vector<int> scrambled_bits);
         static std::vector<int> convolutional_encoder_mother_(const std::vector<int>& scrambled_bits);
         static std::vector<int> puncture_(std::vector<int> mother_coded_bits, CodingRates rate);
+        static std::vector<int> depuncture_(std::vector<int> rx_bits, CodingRates rate);
+        static std::vector<int> viterbi_decode_(std::vector<int> rx_bits);
+        static void precompute_trellis_();
     };
 }
 

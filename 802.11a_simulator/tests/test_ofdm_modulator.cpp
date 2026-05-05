@@ -1,10 +1,10 @@
+#include "phy/helpers.h"
 #include "phy/link_settings.h"
 #include "phy/ofdm_modulator.h"
 #include <numbers>
 #include <vector>
 #include <complex>
 #include <cmath>
-#include <memory_resource>
 #include <matplot/matplot.h>
 
 namespace wifi80211a {
@@ -17,7 +17,7 @@ int test_ofdm_modulator() {
     const double f = 100e3;
     const std::size_t num_samples = 1024;
 
-    std::pmr::vector<std::complex<double>> test_data;
+    wifi80211a::complexVector test_data;
     std::vector<double> frequency;
     for (std::size_t i = 0; i < num_samples; i++) {
         double phase = 2.0 * std::numbers::pi * f * static_cast<double>(i) / fs;

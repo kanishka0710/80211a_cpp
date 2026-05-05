@@ -24,18 +24,18 @@ namespace wifi80211a {
         LinkSettings() = default;
         LinkSettings(ModulationTypes modulation_type_arg, CodingRates coding_rate_arg);
 
-        double getCodingRate() const;
+        CodingRates getCodingRate() const;
         ModulationTypes getModulationType() const;
-        int8_t getErrorCorrectingCode() const;
-        int8_t getNumSubcarriers() const;
+        int getErrorCorrectingCode() const;
+        int getNumSubcarriers() const;
         double getOFDMSymbolDuration() const;
         double getGuardInterval() const;
         double getOccupiedBandwidth() const;
-        int8_t getNumberOfPilots() const;
-        int8_t getCPLenData() const;
-        int8_t getCPLenTraining() const;
-        int8_t getNFFT() const;
-        int16_t getNCPBS() const;
+        int getNumberOfPilots() const;
+        int getCPLenData() const;
+        int getCPLenTraining() const;
+        int getNFFT() const;
+        int getNCPBS() const;
         double getT() const;
         std::vector<int> getPilotPositions() const;
 
@@ -46,12 +46,12 @@ namespace wifi80211a {
         ModulationTypes modulation_type = ModulationTypes::BPSK;
         CodingRates coding_rate = CodingRates::R12;
 
-        int8_t error_correcting_code = 7;
-        int8_t num_subcarriers = 52;
-        int8_t num_pilots = 4;
-        int8_t nFFT = 64;
-        int8_t cp_len_data = 16;
-        int8_t cp_len_training = 32;
+        int error_correcting_code = 7;
+        int num_subcarriers = 52;
+        int num_pilots = 4;
+        int nFFT = 64;
+        int cp_len_data = 16;
+        int cp_len_training = 32;
         double ofdm_symbol_duration = 4e-6;   // 4 µs
         double T = 4e-6 - 0.8e-6;
         double guard_interval = 0.8e-6;      // 0.8 µs

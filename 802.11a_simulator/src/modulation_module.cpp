@@ -8,11 +8,13 @@
 #include <complex>
 #include <vector>
 
+#include "phy/helpers.h"
+
 namespace wifi80211a
 {
-    std::vector<std::complex<double>> ModulationModule::map_bits_to_constellation(std::vector<int> bits, ModulationTypes modulation, int16_t n_bpsc)
+    complexVector ModulationModule::map_bits_to_constellation(std::vector<int> bits, ModulationTypes modulation, int n_bpsc)
     {
-        std::vector<std::complex<double>> result;
+        complexVector result;
         result.reserve(bits.size() / n_bpsc);
         const double k_mod = normalization_constant.at(modulation);
 
@@ -38,6 +40,74 @@ namespace wifi80211a
             }
         }
         return result;
+    }
+
+    std::pmr::vector<int> ModulationModule::map_constellation_to_bits(const complexVector& symbols,
+        ModulationTypes modulation, int n_bpsc)
+    {   
+        std::pmr::vector<int> bits;
+        const double k_mod = normalization_constant.at(modulation);
+        for (const auto& symbol : symbols) {
+            switch (modulation) {
+            case ModulationTypes::BPSK: {
+                bits.push_back(symbol.real() > 0 ? 1 : 0);
+                break;
+            }
+            case ModulationTypes::QPSK: {
+                double min_distance = std::numeric_limits<double>::max();
+                int closest_key = 0;
+                for (const auto& [key, value] : qpsk_map) {
+                    double distance = std::abs(symbol / k_mod - value);
+                    min_distance = std::min(min_distance, distance);
+                    if (distance == min_distance) {
+                        closest_key = key;
+                    }
+                }
+                auto unpacked = unpack_msb_(closest_key, n_bpsc);
+                bits.insert(bits.end(), unpacked.begin(), unpacked.end());
+                break;
+            }
+            case ModulationTypes::QAM16: {
+                double min_distance = std::numeric_limits<double>::max();
+                int closest_key = 0;
+                for (const auto& [key, value] : qam16_map) {
+                    double distance = std::abs(symbol / k_mod - value);
+                    min_distance = std::min(min_distance, distance);
+                    if (distance == min_distance) {
+                        closest_key = key;
+                    }
+                }
+                auto unpacked = unpack_msb_(closest_key, n_bpsc);
+                bits.insert(bits.end(), unpacked.begin(), unpacked.end());
+                break;
+            }
+            case ModulationTypes::QAM64: {
+                double min_distance = std::numeric_limits<double>::max();
+                int closest_key = 0;
+                for (const auto& [key, value] : qam64_map) {
+                    double distance = std::abs(symbol / k_mod - value);
+                    min_distance = std::min(min_distance, distance);
+                    if (distance == min_distance) {
+                        closest_key = key;
+                    }
+                }
+                auto unpacked = unpack_msb_(closest_key, n_bpsc);
+                bits.insert(bits.end(), unpacked.begin(), unpacked.end());
+                break;
+            }
+            default:
+                break;
+            }
+        }
+        return bits;
+    }
+
+    std::vector<int> ModulationModule::unpack_msb_(int key, int n_bpsc)
+    {
+        std::vector<int> bits(n_bpsc);
+        for (int b = 0; b < n_bpsc; ++b)
+            bits[b] = (key >> (n_bpsc - 1 - b)) & 1;
+        return bits;
     }
 
     int ModulationModule::pack_msb_(const std::vector<int>& bits, const ModulationTypes modulation)

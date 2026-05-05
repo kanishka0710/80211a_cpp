@@ -40,18 +40,28 @@ add_library(wifi_phy
         src/interleaver_module.cpp
         src/modulation_module.cpp
         src/front_end_module.cpp
+        src/pilot_utils.cpp
+        src/equalizer_module.cpp
+        src/helpers.cpp
         include/phy/front_end_module.h
+        include/phy/equalizer_module.h
+        include/phy/pilot_utils.h
 )
 
 add_executable(wifi80211a_app
     main.cpp
         include/phy/front_end_module.h
+        include/phy/equalizer_module.h
+        src/transceiver.cpp
+        include/phy/transceiver.h
 )
 
 add_executable(test_forward_error_correction
     tests/test_forward_error_correction.cpp
         include/phy/interleaver_module.h
         include/phy/modulation_module.h
+        include/phy/equalizer_module.h
+        include/phy/transceiver.h
 )
 target_link_libraries(test_forward_error_correction PRIVATE wifi_phy)
 

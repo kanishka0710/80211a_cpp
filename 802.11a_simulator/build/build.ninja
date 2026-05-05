@@ -86,6 +86,20 @@ build CMakeFiles/wifi_phy.dir/src/front_end_module.cpp.obj: CXX_COMPILER__wifi_p
   OBJECT_DIR = CMakeFiles\wifi_phy.dir
   OBJECT_FILE_DIR = CMakeFiles\wifi_phy.dir\src
 
+build CMakeFiles/wifi_phy.dir/src/pilot_utils.cpp.obj: CXX_COMPILER__wifi_phy_unscanned_ C$:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/src/pilot_utils.cpp || cmake_object_order_depends_target_wifi_phy
+  DEP_FILE = CMakeFiles\wifi_phy.dir\src\pilot_utils.cpp.obj.d
+  FLAGS = -std=gnu++23 -Wall -Wextra -Wpedantic
+  INCLUDES = -IC:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/include -isystem C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build/vcpkg_installed/x64-mingw-dynamic/include
+  OBJECT_DIR = CMakeFiles\wifi_phy.dir
+  OBJECT_FILE_DIR = CMakeFiles\wifi_phy.dir\src
+
+build CMakeFiles/wifi_phy.dir/src/equalizer_module.cpp.obj: CXX_COMPILER__wifi_phy_unscanned_ C$:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/src/equalizer_module.cpp || cmake_object_order_depends_target_wifi_phy
+  DEP_FILE = CMakeFiles\wifi_phy.dir\src\equalizer_module.cpp.obj.d
+  FLAGS = -std=gnu++23 -Wall -Wextra -Wpedantic
+  INCLUDES = -IC:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/include -isystem C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build/vcpkg_installed/x64-mingw-dynamic/include
+  OBJECT_DIR = CMakeFiles\wifi_phy.dir
+  OBJECT_FILE_DIR = CMakeFiles\wifi_phy.dir\src
+
 
 # =============================================================================
 # Link build statements for STATIC_LIBRARY target wifi_phy
@@ -94,7 +108,7 @@ build CMakeFiles/wifi_phy.dir/src/front_end_module.cpp.obj: CXX_COMPILER__wifi_p
 #############################################
 # Link the static library libwifi_phy.a
 
-build libwifi_phy.a: CXX_STATIC_LIBRARY_LINKER__wifi_phy_ CMakeFiles/wifi_phy.dir/src/link_settings.cpp.obj CMakeFiles/wifi_phy.dir/src/ofdm_module.cpp.obj CMakeFiles/wifi_phy.dir/src/fec_module.cpp.obj CMakeFiles/wifi_phy.dir/src/interleaver_module.cpp.obj CMakeFiles/wifi_phy.dir/src/modulation_module.cpp.obj CMakeFiles/wifi_phy.dir/src/front_end_module.cpp.obj
+build libwifi_phy.a: CXX_STATIC_LIBRARY_LINKER__wifi_phy_ CMakeFiles/wifi_phy.dir/src/link_settings.cpp.obj CMakeFiles/wifi_phy.dir/src/ofdm_module.cpp.obj CMakeFiles/wifi_phy.dir/src/fec_module.cpp.obj CMakeFiles/wifi_phy.dir/src/interleaver_module.cpp.obj CMakeFiles/wifi_phy.dir/src/modulation_module.cpp.obj CMakeFiles/wifi_phy.dir/src/front_end_module.cpp.obj CMakeFiles/wifi_phy.dir/src/pilot_utils.cpp.obj CMakeFiles/wifi_phy.dir/src/equalizer_module.cpp.obj
   OBJECT_DIR = CMakeFiles\wifi_phy.dir
   POST_BUILD = cd .
   PRE_LINK = cd .
@@ -151,6 +165,13 @@ build CMakeFiles/test_forward_error_correction.dir/tests/test_forward_error_corr
   OBJECT_DIR = CMakeFiles\test_forward_error_correction.dir
   OBJECT_FILE_DIR = CMakeFiles\test_forward_error_correction.dir\tests
 
+build CMakeFiles/test_forward_error_correction.dir/src/equalizer_module.cpp.obj: CXX_COMPILER__test_forward_error_correction_unscanned_ C$:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/src/equalizer_module.cpp || cmake_object_order_depends_target_test_forward_error_correction
+  DEP_FILE = CMakeFiles\test_forward_error_correction.dir\src\equalizer_module.cpp.obj.d
+  FLAGS = -std=gnu++23
+  INCLUDES = -IC:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/include
+  OBJECT_DIR = CMakeFiles\test_forward_error_correction.dir
+  OBJECT_FILE_DIR = CMakeFiles\test_forward_error_correction.dir\src
+
 
 # =============================================================================
 # Link build statements for EXECUTABLE target test_forward_error_correction
@@ -159,7 +180,7 @@ build CMakeFiles/test_forward_error_correction.dir/tests/test_forward_error_corr
 #############################################
 # Link the executable test_forward_error_correction.exe
 
-build test_forward_error_correction.exe: CXX_EXECUTABLE_LINKER__test_forward_error_correction_ CMakeFiles/test_forward_error_correction.dir/tests/test_forward_error_correction.cpp.obj | libwifi_phy.a vcpkg_installed/x64-mingw-dynamic/debug/lib/libfftw3.dll.a || libwifi_phy.a
+build test_forward_error_correction.exe: CXX_EXECUTABLE_LINKER__test_forward_error_correction_ CMakeFiles/test_forward_error_correction.dir/tests/test_forward_error_correction.cpp.obj CMakeFiles/test_forward_error_correction.dir/src/equalizer_module.cpp.obj | libwifi_phy.a vcpkg_installed/x64-mingw-dynamic/debug/lib/libfftw3.dll.a || libwifi_phy.a
   LINK_LIBRARIES = libwifi_phy.a  vcpkg_installed/x64-mingw-dynamic/debug/lib/libfftw3.dll.a  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\test_forward_error_correction.dir
   POST_BUILD = C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Users\Kanishka\paracausal-toolkit\802.11a_simulator\build && "C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -executionpolicy Bypass -file C:/Users/Kanishka/vcpkg/scripts/buildsystems/msbuild/applocal.ps1 -targetBinary C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build/test_forward_error_correction.exe -installedDir C:/Users/Kanishka/paracausal-toolkit/802.11a_simulator/build/vcpkg_installed/x64-mingw-dynamic/bin -OutVariable out"

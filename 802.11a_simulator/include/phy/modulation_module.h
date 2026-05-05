@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "link_settings.h"
+#include "phy/helpers.h"
 #include "phy/link_settings.h"
 
 namespace wifi80211a
@@ -17,16 +18,19 @@ namespace wifi80211a
     class ModulationModule {
     public:
         ModulationModule() = default;
-        static std::vector<std::complex<double>> map_bits_to_constellation(
-            std::vector<int> bits, ModulationTypes modulation, int16_t n_bpsc);
+        static complexVector map_bits_to_constellation(
+            std::vector<int> bits, ModulationTypes modulation, int n_bpsc);
+        static std::pmr::vector<int> map_constellation_to_bits(const complexVector&,
+            ModulationTypes modulation, int n_bpsc);
 
     private:
 
         static int pack_msb_(const std::vector<int>& bits, ModulationTypes modulation);
+        static std::vector<int> unpack_msb_(int key, int n_bpsc);
 
         static inline const std::map<ModulationTypes, double> normalization_constant {
             {ModulationTypes::BPSK, 1.0},
-            {ModulationTypes::QPSK, 1.0/std::sqrt(2.0)},
+            {ModulationTypes::QPSK, 1.0 / std::sqrt(2.0)},
             {ModulationTypes::QAM16, 1.0 / std::sqrt(10.0)},
             {ModulationTypes::QAM64, 1.0 / std::sqrt(42.0)}
         };

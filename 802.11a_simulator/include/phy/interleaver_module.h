@@ -13,8 +13,9 @@ namespace wifi80211a
     {
         public:
             InterleaverModule() = default;
-            static std::vector<int> interleave(const std::vector<int>& input, const int16_t n_cbps, const int16_t n_bpsc);
-    };
+            static std::pmr::vector<int> interleave(const std::pmr::vector<int>& input, int n_cbps, int n_bpsc);
+            static std::pmr::vector<int> deinterleave(const std::pmr::vector<int>& input, int n_cbps, int n_bpsc);
+        };
 }
 
 #endif //WIFI80211A_DATA_INTERLEAVER_H
