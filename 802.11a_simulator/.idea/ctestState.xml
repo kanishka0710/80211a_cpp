@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="CidrCTestProjectState">
-    <ctestState>
-      <lineNumber testId="path:null test:forward_error_correction_scrambler" value="31" />
-    </ctestState>
-  </component>
-</project>
