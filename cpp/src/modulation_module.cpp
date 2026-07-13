@@ -42,10 +42,10 @@ namespace wifi80211a
         return result;
     }
 
-    std::pmr::vector<int> ModulationModule::map_constellation_to_bits(const complexVector& symbols,
+    std::vector<int> ModulationModule::map_constellation_to_bits(const complexVector& symbols,
         ModulationTypes modulation, int n_bpsc)
     {   
-        std::pmr::vector<int> bits;
+        std::vector<int> bits;
         const double k_mod = normalization_constant.at(modulation);
         for (const auto& symbol : symbols) {
             switch (modulation) {

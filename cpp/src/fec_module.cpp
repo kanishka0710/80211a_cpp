@@ -11,7 +11,7 @@
 namespace wifi80211a
 {
 
-    std::vector<int> FECModule::performFEC(
+    std::vector<int> performFEC(
         std::vector<int> data_bits,
         const CodingRates coding_rate,
         const std::uint8_t scrambler_seed_7bit)
@@ -32,14 +32,14 @@ namespace wifi80211a
         return output;
     }
 
-    std::vector<int> FECModule::performFECRX(std::vector<int>& bits, const CodingRates coding_rate, std::uint8_t scrambler_seed_7bit) {
+    std::vector<int> performFECRX(std::vector<int>& bits, const CodingRates coding_rate, std::uint8_t scrambler_seed_7bit) {
         auto depunctured = depuncture_(bits, coding_rate);
         auto decoded = viterbi_decode_(depunctured);
         return scramble_(decoded, scrambler_seed_7bit);
     }
 
 
-    std::vector<int> FECModule::data_scrambler_prbs(const std::size_t n, const std::uint8_t seed_7bit)
+    std::vector<int> data_scrambler_prbs(const std::size_t n, const std::uint8_t seed_7bit)
     {
         std::vector<int> regs(7);
         for (std::size_t i = 0; i < 7; ++i)
@@ -51,7 +51,7 @@ namespace wifi80211a
         return bits;
     }
 
-    std::vector<int> FECModule::scramble_(std::vector<int> bits, const std::uint8_t seed_7bit)
+    std::vector<int> scramble_(std::vector<int> bits, const std::uint8_t seed_7bit)
     {
         std::vector<int> regs(7);
         for (std::size_t i = 0; i < 7; ++i) {
@@ -66,14 +66,14 @@ namespace wifi80211a
         return scrambled_bits;
     }
 
-    std::vector<int> FECModule::append_convolutional_tail_(std::vector<int> scrambled_bits)
+    std::vector<int> append_convolutional_tail_(std::vector<int> scrambled_bits)
     {
         constexpr int TAIL_BITS = 6;
         scrambled_bits.insert(scrambled_bits.end(), TAIL_BITS, 0);
         return scrambled_bits;
     }
 
-    std::vector<int> FECModule::convolutional_encoder_mother_(const std::vector<int>& scrambled_bits)
+    std::vector<int> convolutional_encoder_mother_(const std::vector<int>& scrambled_bits)
     {
         std::vector<int> regs = {0, 0, 0, 0, 0, 0, 0};
         std::vector<int> output_bits;
@@ -92,7 +92,7 @@ namespace wifi80211a
         return output_bits;
     }
 
-    std::vector<int> FECModule::puncture_(std::vector<int> scrambled_bits, const CodingRates rate){
+    std::vector<int> puncture_(std::vector<int> scrambled_bits, const CodingRates rate){
         if (rate == CodingRates::R12) return scrambled_bits;
         if (rate == CodingRates::R34)
         {
@@ -118,7 +118,7 @@ namespace wifi80211a
         return output_bits;
     }
 
-    std::vector<int> FECModule::depuncture_(std::vector<int> rx_bits, const CodingRates rate) {
+    std::vector<int> depuncture_(std::vector<int> rx_bits, const CodingRates rate) {
         if (rate == CodingRates::R12) return rx_bits;
         if (rate == CodingRates::R34) {
             std::vector<int> output_bits;
@@ -146,7 +146,7 @@ namespace wifi80211a
         }
     }
 
-    int FECModule::LFSRStep_(std::vector<int>& regs)
+    int LFSRStep_(std::vector<int>& regs)
     {
         const int feedback = regs[3] ^ regs[6];
         const int prbs_bit = feedback;
@@ -159,8 +159,8 @@ namespace wifi80211a
         return prbs_bit;
     }
 
-    std::vector<int> FECModule::viterbi_decode_(std::vector<int> rx_bits) {
-        precompute_trellis_();
+    std::vector<int> viterbi_decode_(std::vector<int> rx_bits) {
+        auto [trellis_A, trellis_B, next_states] = precompute_trellis_();
         constexpr int num_states = 64;
         int T = (int)rx_bits.size() / 2;
         std::vector<int> pathMetrics(num_states, std::numeric_limits<int>::max());
@@ -197,8 +197,11 @@ namespace wifi80211a
         return decoded_bits;
     }
 
-    void FECModule::precompute_trellis_() {
-        if (trellis_ready_) return;
+    std::tuple<int[64][2], int[64][2], int[64][2]> precompute_trellis_() {
+        int trellis_A[64][2] = {};
+        int trellis_B[64][2] = {};
+        int next_states[64][2] = {};
+
         for (int s = 0; s < 64; s++) {
             for (int i = 0; i < 2; i++) {
                 next_states[s][i] = (s >> 1) | (i << 5);
@@ -206,6 +209,6 @@ namespace wifi80211a
                 trellis_B[s][i]   = (s&1) ^ ((s>>3)&1) ^ ((s>>4)&1) ^ ((s>>5)&1) ^ i;
             }
         }
-        trellis_ready_ = true;
+        return trellis_A, trellis_B, next_states;
     }
 }

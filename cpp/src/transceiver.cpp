@@ -21,7 +21,7 @@ namespace wifi80211a
         std::vector<int> interleaved_bits;
         interleaved_bits.reserve(coded_bits.size());
         for (std::size_t i = 0; i < coded_bits.size(); i += n_cbps) {
-            std::pmr::vector<int> block(coded_bits.begin() + i, coded_bits.begin() + i + n_cbps);
+            std::vector<int> block(coded_bits.begin() + i, coded_bits.begin() + i + n_cbps);
             auto blk = InterleaverModule::interleave(block, n_cbps, n_bpsc);
             interleaved_bits.insert(interleaved_bits.end(), blk.begin(), blk.end());
         }

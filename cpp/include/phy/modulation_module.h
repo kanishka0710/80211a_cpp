@@ -20,7 +20,7 @@ namespace wifi80211a
         ModulationModule() = default;
         static complexVector map_bits_to_constellation(
             std::vector<int> bits, ModulationTypes modulation, int n_bpsc);
-        static std::pmr::vector<int> map_constellation_to_bits(const complexVector&,
+        static std::vector<int> map_constellation_to_bits(const complexVector&,
             ModulationTypes modulation, int n_bpsc);
 
     private:

@@ -55,7 +55,9 @@ class OFDMModule:
         return np.array(output).flatten()
 
     def demodulate(self, data: list[complex]) -> OFDMDemodResult:
-        numOfdmBlocks = int(np.ceil(len(data) / (self.linkSettings.nFFT + self.linkSettings.cpLenData)))
+        symbol_len = self.linkSettings.nFFT + self.linkSettings.cpLenData
+        # Only demodulate complete OFDM symbols (partial trailing blocks lack a full FFT).
+        numOfdmBlocks = len(data) // symbol_len
         freqBins = []
         pilots = []
         referencePilots = []
@@ -63,10 +65,10 @@ class OFDMModule:
         lfsr = PilotLFSR()
 
         for i in range(numOfdmBlocks):
-            blockStart = i * (self.linkSettings.nFFT + self.linkSettings.cpLenData)
+            blockStart = i * symbol_len
             bodyStart = blockStart + self.linkSettings.cpLenData
 
-            symbol = np.array(data[bodyStart : bodyStart + self.linkSettings.nFFT])
+            symbol = np.asarray(data[bodyStart : bodyStart + self.linkSettings.nFFT])
             freqDomain = fft.fft(symbol)
             freqBins.append(freqDomain)
 

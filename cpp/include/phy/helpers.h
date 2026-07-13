@@ -9,5 +9,5 @@ namespace wifi80211a
 
     bool areClose(const std::complex<double>& a, const std::complex<double>& b, double epsilon = 1e-9);
 
-    using complexVector = std::pmr::vector<std::complex<double>>;
+    using complexVector = std::vector<std::complex<double>>;
 }

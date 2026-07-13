@@ -34,6 +34,7 @@ class LinkSettings:
         ModulationTypes.QAM16: 4,
         ModulationTypes.QAM64: 6,
     })
+    sampleRate: float = 20e6 # Sample Rate for 802.11a, NOT TUNABLE
 
     def __post_init__(self):
         self.T = self.ofdmSymbolDuration - self.guardInterval
