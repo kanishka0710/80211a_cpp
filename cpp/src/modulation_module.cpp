@@ -12,7 +12,7 @@
 
 namespace wifi80211a
 {
-    complexVector ModulationModule::map_bits_to_constellation(std::vector<int> bits, ModulationTypes modulation, int n_bpsc)
+    complexVector map_bits_to_constellation(std::vector<int> bits, ModulationTypes modulation, int n_bpsc)
     {
         complexVector result;
         result.reserve(bits.size() / n_bpsc);
@@ -42,7 +42,7 @@ namespace wifi80211a
         return result;
     }
 
-    std::vector<int> ModulationModule::map_constellation_to_bits(const complexVector& symbols,
+    std::vector<int> map_constellation_to_bits(const complexVector& symbols,
         ModulationTypes modulation, int n_bpsc)
     {   
         std::vector<int> bits;
@@ -102,7 +102,7 @@ namespace wifi80211a
         return bits;
     }
 
-    std::vector<int> ModulationModule::unpack_msb_(int key, int n_bpsc)
+    std::vector<int> unpack_msb_(int key, int n_bpsc)
     {
         std::vector<int> bits(n_bpsc);
         for (int b = 0; b < n_bpsc; ++b)
@@ -110,7 +110,7 @@ namespace wifi80211a
         return bits;
     }
 
-    int ModulationModule::pack_msb_(const std::vector<int>& bits, const ModulationTypes modulation)
+    int pack_msb_(const std::vector<int>& bits, const ModulationTypes modulation)
     {
         switch (modulation)
         {

@@ -8,15 +8,12 @@
 
 namespace wifi80211a
 {
-    class EqualizerModule {
-    public:
-        EqualizerModule() = default;
-        static complexVector perform_equalization(
-            OFDMDemodResult& result, 
-            const LinkSettings& link_settings);
-    };
+    complexVector perform_equalization(OFDMDemodResult& result, const LinkSettings& link_settings);
+
+    /// Per-subcarrier equalization using an LTF-derived channel estimate `H`
+    /// (as produced by `channel_estimation`). `freqBins` is the flattened
+    /// FFT output from `demodulate`, shape = (num_symbols * nFFT).
+    complexVector equalize_with_ltf(const complexVector& freqBins, const complexVector& H, const LinkSettings& linkSettings);
 }
-
-
 
 #endif //WIFI80211A_EQUALIZER_MODULE_H

@@ -79,8 +79,8 @@ def receive(
     # 1. Synchronization: coarse timing → fine timing → channel estimation
     sync = SyncModule(link).detect_and_sync(rx_signal)
 
-    # 2. Apply combined CFO correction to full signal
-    n         = np.arange(len(rx_signal))
+    # 2. Apply combined CFO correction to full signal (cfo_hz is in Hz)
+    n = np.arange(len(rx_signal))
     corrected = rx_signal * np.exp(-1j * 2 * np.pi * sync.cfo_hz * n / Fs)
 
     # 3. Strip preamble and extract data portion

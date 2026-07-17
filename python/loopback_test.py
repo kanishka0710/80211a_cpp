@@ -35,6 +35,11 @@ def add_awgn(signal: np.ndarray, snr_db: float, rng: np.random.Generator) -> np.
     )
     return signal + noise
 
+def add_cfo_and_phase(signal, cfo_hz, sample_rate, phase_rad=None):
+    if phase_rad is None:
+        phase_rad = np.random.uniform(-np.pi, np.pi)
+    n = np.arange(len(signal))
+    return signal * np.exp(1j * (2*np.pi*cfo_hz*n/sample_rate + phase_rad))
 
 # ── Single trial ──────────────────────────────────────────────────────────────
 
@@ -59,7 +64,7 @@ def run_trial(
     )
     # Per-SNR delay offset keeps trials reproducible while still stressing sync.
     delay = int(rng.integers(0, 235))
-    rx_signal = add_delay(add_awgn(tx_signal, snr_db, rng), delay, rng)
+    rx_signal = add_cfo_and_phase(add_delay(add_awgn(tx_signal, snr_db, rng), delay, rng), 50e3, 20e6)
 
     rx_bits, sync, equalized = receive(
         rx_signal, modulation, coding_rate, scrambler_seed, link
@@ -106,33 +111,73 @@ def snr_sweep(
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+BEST_ERROR_PATH = "best_error.npy"
+
 if __name__ == "__main__":
     NUM_BITS  = 1024
-    SNR_RANGE = [0, 5, 10, 15, 20, 25, 30]
+    SNR_RANGE = np.linspace(0, 30, 15)
 
     CONFIGS = [
         (ModulationTypes.BPSK,  CodingRates.R12),
+        (ModulationTypes.BPSK,  CodingRates.R23),
+        (ModulationTypes.BPSK,  CodingRates.R34),
         (ModulationTypes.QPSK,  CodingRates.R12),
+        (ModulationTypes.QPSK,  CodingRates.R23),
+        (ModulationTypes.QPSK,  CodingRates.R34),
         (ModulationTypes.QAM16, CodingRates.R12),
+        (ModulationTypes.QAM16, CodingRates.R23),
+        (ModulationTypes.QAM16, CodingRates.R34),
         (ModulationTypes.QAM64, CodingRates.R12),
+        (ModulationTypes.QAM64, CodingRates.R23),
+        (ModulationTypes.QAM64, CodingRates.R34),
     ]
 
     fig, ax = plt.subplots(figsize=(9, 6))
     results  = {}
+    colors = {
+        ModulationTypes.BPSK: "blue",
+        ModulationTypes.QPSK: "red",
+        ModulationTypes.QAM16: "green",
+        ModulationTypes.QAM64: "purple",
+    }
+    linestyles = {
+        CodingRates.R12: "-",
+        CodingRates.R23: "--",
+        CodingRates.R34: "-.",
+    }
 
+    all_bers = []
     for mod, rate in CONFIGS:
         label = f"{mod} {rate}"
         print(f"\n── {label} ──")
         bers = snr_sweep(NUM_BITS, mod, rate, SNR_RANGE)
         results[label] = bers
-        ax.semilogy(SNR_RANGE, [max(b, 1e-5) for b in bers], marker="o", label=label)
+        all_bers.extend(bers)
+        ax.semilogy(SNR_RANGE, [max(b, 1e-5) for b in bers], marker="o", label=label, color=colors[mod], linestyle=linestyles[rate])
+
+    avg_ber = float(np.mean(all_bers)) if all_bers else 0.0
+    print(f"\nAverage BER: {avg_ber:.4f}")
+
+    try:
+        best_error = float(np.load(BEST_ERROR_PATH))
+    except FileNotFoundError:
+        best_error = None
+
+    if best_error is None or avg_ber < best_error:
+        np.save(BEST_ERROR_PATH, np.array(avg_ber))
+        if best_error is None:
+            print(f"Saved new best → {BEST_ERROR_PATH} ({avg_ber:.6e})")
+        else:
+            print(f"New best! {avg_ber:.6e} < {best_error:.6e}  → saved {BEST_ERROR_PATH}")
+    else:
+        print(f"No improvement ({avg_ber:.6e} >= best {best_error:.6e})")
 
     ax.set_xlabel("SNR (dB)")
     ax.set_ylabel("BER")
     ax.set_title("802.11a Loopback — BER vs SNR  (AWGN)")
     ax.legend()
     ax.grid(True, which="both", alpha=0.4)
-    ax.set_ylim(1e-5, 1.0)
+    ax.set_ylim(1e-6, 1.0)
 
     plt.tight_layout()
     plt.savefig("ber_vs_snr.png", dpi=150)

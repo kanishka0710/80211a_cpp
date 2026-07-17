@@ -11,7 +11,7 @@
 namespace wifi80211a
 {
 
-    complexVector OFDMModule::modulate(const LinkSettings& link_settings,
+    complexVector modulate(const LinkSettings& link_settings,
                                        const complexVector& data, PilotLFSR pilot_lfsr)
     {
         const int nFFT = link_settings.getNFFT();
@@ -84,7 +84,7 @@ namespace wifi80211a
     }
 
 
-    OFDMDemodResult OFDMModule::demodulate(const LinkSettings& linkSettings, const complexVector& data)
+    OFDMDemodResult demodulate(const LinkSettings& linkSettings, const complexVector& data)
     {
         const int nFFT = linkSettings.getNFFT();
         const int cp_len = linkSettings.getCPLenData();

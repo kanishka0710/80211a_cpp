@@ -33,8 +33,8 @@ namespace wifi80211a
     }
 
     std::vector<int> performFECRX(std::vector<int>& bits, const CodingRates coding_rate, std::uint8_t scrambler_seed_7bit) {
-        auto depunctured = depuncture_(bits, coding_rate);
-        auto decoded = viterbi_decode_(depunctured);
+        auto [depunctured, mask_bits] = depuncture_(bits, coding_rate);
+        auto decoded = viterbi_decode_(depunctured, mask_bits);
         return scramble_(decoded, scrambler_seed_7bit);
     }
 
@@ -118,8 +118,13 @@ namespace wifi80211a
         return output_bits;
     }
 
-    std::vector<int> depuncture_(std::vector<int> rx_bits, const CodingRates rate) {
-        if (rate == CodingRates::R12) return rx_bits;
+    std::tuple<std::vector<int>, std::vector<int>> depuncture_(std::vector<int> rx_bits, const CodingRates rate) {
+
+        std::vector<int> mask_bits;
+        if (rate == CodingRates::R12) {
+            mask_bits = std::vector<int>(rx_bits.size(), 1);
+            return std::make_tuple(rx_bits, mask_bits);
+        }
         if (rate == CodingRates::R34) {
             std::vector<int> output_bits;
             for (size_t i = 0; i < rx_bits.size(); i += 4)
@@ -130,10 +135,12 @@ namespace wifi80211a
                 output_bits.push_back(0);
                 output_bits.push_back(0);
                 output_bits.push_back(rx_bits[i+3]);
+                mask_bits.insert(mask_bits.end(), {1, 1, 1, 0, 0, 1});
             }
-            return output_bits;
+            return std::make_tuple(output_bits, mask_bits);
         }
-        if (rate == CodingRates::R23) {
+        if (rate == CodingRates::R23)
+        {
             std::vector<int> output_bits;
             for (size_t i = 0; i < rx_bits.size(); i += 3)
             {
@@ -141,8 +148,9 @@ namespace wifi80211a
                 output_bits.push_back(rx_bits[i+1]);
                 output_bits.push_back(rx_bits[i+2]);
                 output_bits.push_back(0);
+                mask_bits.insert(mask_bits.end(), {1, 1, 1, 0});
             }
-            return output_bits;
+            return std::make_tuple(output_bits, mask_bits);
         }
     }
 
@@ -159,7 +167,7 @@ namespace wifi80211a
         return prbs_bit;
     }
 
-    std::vector<int> viterbi_decode_(std::vector<int> rx_bits) {
+    std::vector<int> viterbi_decode_(std::vector<int> rx_bits, std::vector<int> mask_bits) {
         auto [trellis_A, trellis_B, next_states] = precompute_trellis_();
         constexpr int num_states = 64;
         int T = (int)rx_bits.size() / 2;
@@ -175,7 +183,7 @@ namespace wifi80211a
             for (int s = 0; s < num_states; s++) {
                 if (pathMetrics[s] == std::numeric_limits<int>::max()) continue;
                 for (int u = 0; u < 2; u++) {
-                    int branchMetric = (rx_A ^ trellis_A[s][u]) + (rx_B ^ trellis_B[s][u]);
+                    int branchMetric = (rx_A ^ trellis_A[s][u]) * mask_bits[2*t] + (rx_B ^ trellis_B[s][u]) * mask_bits[2*t+1];
                     int ns = next_states[s][u];
                     int candidate = pathMetrics[s] + branchMetric;
                     if (candidate < newMetric[ns]) {
@@ -197,10 +205,10 @@ namespace wifi80211a
         return decoded_bits;
     }
 
-    std::tuple<int[64][2], int[64][2], int[64][2]> precompute_trellis_() {
-        int trellis_A[64][2] = {};
-        int trellis_B[64][2] = {};
-        int next_states[64][2] = {};
+    std::tuple<std::vector<std::vector<int>>, std::vector<std::vector<int>>, std::vector<std::vector<int>>> precompute_trellis_() {
+        std::vector<std::vector<int>> trellis_A(64, std::vector<int>(2, 0));
+        std::vector<std::vector<int>> trellis_B(64, std::vector<int>(2, 0));
+        std::vector<std::vector<int>> next_states(64, std::vector<int>(2, 0));
 
         for (int s = 0; s < 64; s++) {
             for (int i = 0; i < 2; i++) {
@@ -209,6 +217,6 @@ namespace wifi80211a
                 trellis_B[s][i]   = (s&1) ^ ((s>>3)&1) ^ ((s>>4)&1) ^ ((s>>5)&1) ^ i;
             }
         }
-        return trellis_A, trellis_B, next_states;
+        return std::make_tuple(trellis_A, trellis_B, next_states);
     }
 }

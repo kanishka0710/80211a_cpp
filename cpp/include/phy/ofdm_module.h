@@ -24,12 +24,6 @@ namespace wifi80211a {
         complexVector reference_pilots;
     };
 
-    class OFDMModule {
-    public:
-        OFDMModule() = default;
-        static complexVector modulate(const LinkSettings& link_settings,
-            const complexVector& data, PilotLFSR pilotLfsr);
-        static OFDMDemodResult demodulate(const LinkSettings& link_settings,
-            const complexVector& data);
-    };
+    complexVector modulate(const LinkSettings& link_settings, const complexVector& data, PilotLFSR pilotLfsr);
+    OFDMDemodResult demodulate(const LinkSettings& link_settings, const complexVector& data);
 }

@@ -22,9 +22,9 @@ namespace wifi80211a
     std::vector<int> append_convolutional_tail_(std::vector<int> scrambled_bits);
     std::vector<int> convolutional_encoder_mother_(const std::vector<int>& scrambled_bits);
     std::vector<int> puncture_(std::vector<int> mother_coded_bits, CodingRates rate);
-    std::vector<int> depuncture_(std::vector<int> rx_bits, CodingRates rate);
-    std::vector<int> viterbi_decode_(std::vector<int> rx_bits);
-    std::tuple<int[64][2], int[64][2], int[64][2]> precompute_trellis_();
+    std::tuple<std::vector<int>, std::vector<int>> depuncture_(std::vector<int> rx_bits, CodingRates rate);
+    std::vector<int> viterbi_decode_(std::vector<int> rx_bits, std::vector<int> mask_bits);
+    std::tuple<std::vector<std::vector<int>>, std::vector<std::vector<int>>, std::vector<std::vector<int>>> precompute_trellis_();
 }
 
 #endif // WIFI80211A_FORWARD_ERROR_CORRECTION_H

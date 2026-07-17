@@ -18,8 +18,8 @@ int main()
         wifi80211a::CodingRates::R12);
 
     auto pilotLfsr = wifi80211a::PilotLFSR();
-    auto tx_signal = wifi80211a::Transceiver::generate_transmit_symbols(input_bits, link_settings, pilotLfsr);
-    auto rx_bits = wifi80211a::Transceiver::receive_symbols(tx_signal, link_settings);
+    auto tx_signal = wifi80211a::generate_transmit_symbols(input_bits, link_settings, pilotLfsr);
+    auto rx_bits = wifi80211a::receive_symbols(tx_signal, link_settings);
     rx_bits.resize(input_bits.size());
 
     for (std::size_t i = 0; i < input_bits.size(); ++i) {

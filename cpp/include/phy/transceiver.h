@@ -16,16 +16,8 @@
 
 namespace wifi80211a {
 
-class Transceiver {
-public:
-    Transceiver() = default;
-
-    static complexVector generate_transmit_symbols(const std::vector<int>& bits, LinkSettings& linkSettings, PilotLFSR& pilotLfsr);
-    static std::vector<int> receive_symbols(complexVector& signal, LinkSettings& linkSettings);
-
-private:
-    PilotLFSR pilot_lfsr_;
-};
+    complexVector tx_chain(const std::vector<int>& bits, LinkSettings& linkSettings, PilotLFSR& pilotLfsr);
+    std::vector<int> rx_chain(complexVector& signal, LinkSettings& linkSettings);
 
 } // wifi80211a
 

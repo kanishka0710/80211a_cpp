@@ -10,4 +10,7 @@ namespace wifi80211a
     bool areClose(const std::complex<double>& a, const std::complex<double>& b, double epsilon = 1e-9);
 
     using complexVector = std::vector<std::complex<double>>;
+
+    complexVector fft(const complexVector& time_domain, int nFFT);
+    complexVector inverse_fft(const complexVector& freq_domain, int nFFT);
 }

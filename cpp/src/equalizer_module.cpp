@@ -5,9 +5,36 @@
 #include "../include/phy/equalizer_module.h"
 #include "phy/pilot_utils.h"
 
+#include <set>
+
 namespace wifi80211a
 {
-    complexVector EqualizerModule::perform_equalization(
+    complexVector equalize_with_ltf(const complexVector& freqBins, const complexVector& H, const LinkSettings& linkSettings)
+    {
+        const int nFFT = linkSettings.getNFFT();
+        const int numBlocks = static_cast<int>(freqBins.size()) / nFFT;
+        const std::vector<int> pilot_positions = linkSettings.getPilotPositions();
+        const std::set<int> pilot_set(pilot_positions.begin(), pilot_positions.end());
+
+        complexVector result;
+        result.reserve(static_cast<std::size_t>(numBlocks) * 48u); // 48 data subcarriers per symbol
+        for (int i = 0; i < numBlocks; i++)
+        {
+            for (int k = -26; k <= 26; k++)
+            {
+                if (k == 0 || pilot_set.contains(k))
+                {
+                    continue;
+                }
+                const int index = fft_bin_from_subcarrier(k, nFFT);
+                const std::complex<double> H_k = (std::abs(H[index]) > 1e-10) ? H[index] : std::complex<double>(1.0, 0.0);
+                result.emplace_back(freqBins[i * nFFT + index] / H_k);
+            }
+        }
+        return result;
+    }
+
+    complexVector perform_equalization(
         OFDMDemodResult& result,
         const LinkSettings& link_settings)
     {

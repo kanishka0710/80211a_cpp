@@ -83,8 +83,7 @@ constexpr std::string_view kSignalFieldEncoded =
 static bool test_scrambler_all_ones_seed()
 {
     static_assert(kScramblerGolden_0x7F.size() == 127);
-    wifi80211a::FECModule fec;
-    const auto got = fec.data_scrambler_prbs(127, 0x7F);
+    const auto got = wifi80211a::data_scrambler_prbs(127, 0x7F);
     return check_equal("Scrambler: seed=0x7F vs IEEE 802.11 127-bit PRBS golden",
                        got, bits_from_sv(kScramblerGolden_0x7F));
 }
@@ -93,8 +92,7 @@ static bool test_scrambler_all_ones_seed()
 static bool test_scrambler_g61_seed()
 {
     static_assert(kScramblerGolden_0x5D.size() == 127);
-    wifi80211a::FECModule fec;
-    const auto got = fec.data_scrambler_prbs(127, 0x5D);
+    const auto got = wifi80211a::data_scrambler_prbs(127, 0x5D);
     return check_equal("Scrambler: seed=0x5D (Annex G.5.2) vs Table G.15",
                        got, bits_from_sv(kScramblerGolden_0x5D));
 }
@@ -106,8 +104,7 @@ static bool test_encoder_signal_field()
 {
     static_assert(kSignalFieldData.size()    == 18);
     static_assert(kSignalFieldEncoded.size() == 48);
-    wifi80211a::FECModule fec;
-    const auto got = fec.performFEC(bits_from_sv(kSignalFieldData),
+    const auto got = wifi80211a::performFEC(bits_from_sv(kSignalFieldData),
                                     wifi80211a::CodingRates::R12,
                                     /*scrambler_seed_7bit=*/0);
     return check_equal("Encoder (R1/2, seed=0): Table G.7 bits 0–17 → Table G.8",
@@ -118,10 +115,9 @@ static bool test_encoder_signal_field()
 /// the K=7 shift register at the all-zero state throughout, so every output bit is 0.
 static bool test_tail_flushes_encoder()
 {
-    wifi80211a::FECModule fec;
     // Empty input → scrambler produces nothing → append_tail adds 6 zeros →
     // encoder sees 6 zeros → shift register stays at zero → 12 zero output bits.
-    const auto got = fec.performFEC({}, wifi80211a::CodingRates::R12, 0);
+    const auto got = wifi80211a::performFEC({}, wifi80211a::CodingRates::R12, 0);
     const std::vector<int> expected(12, 0);
     return check_equal("Tail: empty input + seed=0 → 12 zero-coded bits",
                        got, expected);
@@ -130,9 +126,8 @@ static bool test_tail_flushes_encoder()
 /// Rate 1/2: output length must be 2 * (N_input + 6) with no puncturing.
 static bool test_output_length_r12()
 {
-    wifi80211a::FECModule fec;
     constexpr std::size_t N = 20;
-    const auto got = fec.performFEC(std::vector<int>(N, 0),
+    const auto got = wifi80211a::performFEC(std::vector<int>(N, 0),
                                     wifi80211a::CodingRates::R12, 0);
     return check_size("Output length R1/2 (N=20)", got.size(), 2 * (N + 6));
 }
@@ -141,9 +136,8 @@ static bool test_output_length_r12()
 /// N=2 → 2*(2+6)=16 mother bits → 4 groups of 4 → 12 output bits.
 static bool test_output_length_r23()
 {
-    wifi80211a::FECModule fec;
     constexpr std::size_t N = 2;
-    const auto got = fec.performFEC(std::vector<int>(N, 0),
+    const auto got = wifi80211a::performFEC(std::vector<int>(N, 0),
                                     wifi80211a::CodingRates::R23, 0);
     return check_size("Output length R2/3 (N=2)", got.size(), 12);
 }
@@ -152,8 +146,7 @@ static bool test_output_length_r23()
 /// N=0 → 2*(0+6)=12 mother bits → 2 groups of 6 → 8 output bits.
 static bool test_output_length_r34()
 {
-    wifi80211a::FECModule fec;
-    const auto got = fec.performFEC({}, wifi80211a::CodingRates::R34, 0);
+    const auto got = wifi80211a::performFEC({}, wifi80211a::CodingRates::R34, 0);
     return check_size("Output length R3/4 (N=0)", got.size(), 8);
 }
 
