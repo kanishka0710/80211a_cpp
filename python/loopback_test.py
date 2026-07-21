@@ -64,7 +64,8 @@ def run_trial(
     )
     # Per-SNR delay offset keeps trials reproducible while still stressing sync.
     delay = int(rng.integers(0, 235))
-    rx_signal = add_cfo_and_phase(add_delay(add_awgn(tx_signal, snr_db, rng), delay, rng), 50e3, 20e6)
+    cfo = int(rng.integers(-10e3, 10e3))
+    rx_signal = add_cfo_and_phase(add_delay(add_awgn(tx_signal, snr_db, rng), delay, rng), cfo, 20e6)
 
     rx_bits, sync, equalized = receive(
         rx_signal, modulation, coding_rate, scrambler_seed, link
@@ -81,6 +82,7 @@ def run_trial(
         "bits_compared": n_compare,
         "packet_start": sync.packet_start,
         "cfo_hz":       sync.cfo_hz,
+        "true_cfo":     cfo,
         "true_delay":   delay,
         "true_bits":    bits[:n_compare],
         "rx_bits":      rx_bits[:n_compare],
@@ -104,7 +106,8 @@ def snr_sweep(
         print(
             f"  {modulation:5s} {coding_rate:3s}  SNR={snr_db:5.1f} dB  "
             f"BER={result['ber']:.4f}  errors={result['bit_errors']}/{result['bits_compared']}  "
-            f"pkt_start={result['packet_start']}  cfo={result['cfo_hz']:.1f} Hz  true_delay={result['true_delay']} samples"
+            f"pkt_start={result['packet_start']}, Sync Error={np.abs(result['packet_start'] - result['true_delay'])}  "
+            f"cfo={result['cfo_hz']:.1f} Hz, CFO Error={np.abs(result['cfo_hz'] - result['true_cfo']):.3f} Hz  "
         )
     return bers
 

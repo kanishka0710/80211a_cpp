@@ -21,8 +21,9 @@ class SyncModule:
     def detect_and_sync(self, signal: np.ndarray) -> SyncResult:
         coarse = self._coarse_cfo(signal, self._coarse_sync(signal))
         fine = self._fine_sync(signal, coarse)
-        H = self._channel_estimation(signal, fine)
-        return SyncResult(packet_start=fine.packet_start, cfo_hz=fine.cfo_hz, H=H)
+        final = SyncResult(packet_start=fine.packet_start, cfo_hz=coarse.cfo_hz, H=np.zeros(self.link.nFFT, dtype=complex))
+        H = self._ls_channel_estimation(signal, final)
+        return SyncResult(packet_start=final.packet_start, cfo_hz=final.cfo_hz, H=H)
 
     def _coarse_cfo(self, signal: np.ndarray, syncResult: SyncResult) -> SyncResult:
         """Morelli–Mengali coarse CFO from the L-part STF (eqs. 18–21)."""
@@ -101,75 +102,116 @@ class SyncModule:
         )
 
     def _fine_sync(self, signal: np.ndarray, coarse: SyncResult) -> SyncResult:
-        """
-        Refines timing and CFO using the LTF.
-
-        After coarse sync, `coarse.packet_start` is near the true preamble start
-        (peak of the L-part timing metric). LT1 therefore starts about
-        STF_LEN + GI2 samples later.
-
-        Steps:
-          1. Apply coarse CFO correction.
-          2. Cross-correlate the known LT sequence against a search window to
-             find the exact start of LT1 (fine timing).
-          3. Compute fine CFO from the phase rotation between LT1 and LT2.
-          4. Return refined packet_start (true preamble start) and combined CFO.
-        """
         Fs = self.link.nFFT / self.link.T
-        STF_LEN = self.link.nFFT // 4 * 10  # 160 samples
-        LTF_CP_LEN = self.link.cpLenTraining  # 32 samples (GI2)
-        LTF_SYM_LEN = self.link.nFFT  # 64 samples
+        STF_LEN = self.link.nFFT // 4 * 10
+        LTF_CP_LEN = self.link.cpLenTraining
+        LTF_SYM_LEN = self.link.nFFT
 
-        # 1. Apply coarse CFO correction (cfo_hz is in Hz)
-        n = np.arange(len(signal))
-        corrected = signal * np.exp(-1j * 2 * np.pi * coarse.cfo_hz * n / Fs)
-
-        # 2. Build known LT1 time-domain sequence (no CP)
         ltf_freq = np.zeros(self.link.nFFT, dtype=complex)
         for i, k in enumerate(LONG_TRAINING_SUBCARRIERS):
             ltf_freq[fft_bin_from_subcarrier(k, self.link.nFFT)] = LONG_TRAINING_VALUES[i]
-        ltf_known = fftlib.ifft(ltf_freq)  # 64 samples
+        ltf_known = fftlib.ifft(ltf_freq)
 
-        # Nominal LT1 start: coarse ≈ preamble start → skip STF + GI2
         lt1_nominal = coarse.packet_start + STF_LEN + LTF_CP_LEN
-
-        # 3. Cross-correlate over a +/-48-sample search window.
-        # Keep the window narrow enough that LT2 (64 samples later) is excluded —
-        # LT1 and LT2 are identical, so a wide window can lock onto LT2 (+64 error).
         search_range = 48
         search_start = max(0, lt1_nominal - search_range)
-        search_end = min(len(corrected) - LTF_SYM_LEN, lt1_nominal + search_range)
+        search_end = min(len(signal) - LTF_SYM_LEN, lt1_nominal + search_range)
+
+        n = np.arange(len(signal))
+        corrected = signal * np.exp(-1j * 2 * np.pi * coarse.cfo_hz * n / Fs)
 
         best_corr = -1.0
-        lt1_start = int(np.clip(lt1_nominal, 0, max(0, len(corrected) - LTF_SYM_LEN)))
+        lt1_start = int(np.clip(lt1_nominal, 0, max(0, len(signal) - LTF_SYM_LEN)))
         for d in range(search_start, search_end + 1):
             corr = np.abs(np.vdot(ltf_known, corrected[d : d + LTF_SYM_LEN]))
-            # Prefer the earliest peak on ties so we do not drift toward LT2.
             if corr > best_corr + 1e-9:
                 best_corr = corr
                 lt1_start = d
 
-        # 4. Fine CFO from phase difference between LT2 and LT1
-        lt1 = corrected[lt1_start : lt1_start + LTF_SYM_LEN]
-        lt2 = corrected[lt1_start + LTF_SYM_LEN : lt1_start + 2 * LTF_SYM_LEN]
+        lt1 = signal[lt1_start : lt1_start + LTF_SYM_LEN]
+        lt2 = signal[lt1_start + LTF_SYM_LEN : lt1_start + 2 * LTF_SYM_LEN]
         if len(lt1) < LTF_SYM_LEN or len(lt2) < LTF_SYM_LEN:
-            # Fall back to coarse timing if the LTF window falls off the buffer.
-            return SyncResult(
-                packet_start=int(coarse.packet_start),
-                cfo_hz=coarse.cfo_hz,
-                H=np.zeros(self.link.nFFT, dtype=complex),
-            )
+            return SyncResult(packet_start=int(coarse.packet_start), cfo_hz=coarse.cfo_hz,
+                            H=np.zeros(self.link.nFFT, dtype=complex))
 
-        fine_cfo = float(np.angle(np.vdot(lt1, lt2)) / (2 * np.pi * LTF_SYM_LEN / Fs))
+        v_coarse = coarse.cfo_hz * (LTF_SYM_LEN / Fs)  # normalized full coarse offset
 
-        # True preamble start = LT1 start − GI2 − STF
+        Kp = LTF_CP_LEN
+        S = np.zeros((2 * LTF_SYM_LEN, Kp), dtype=complex)
+        r_v = np.concatenate((lt1, lt2))      
+        s_ext = np.concatenate((ltf_known, ltf_known))
+        for col in range(Kp):
+            S[:, col] = np.roll(s_ext, col)
+        B = S @ np.linalg.pinv(S)
+
+        F = 0.15
+        J = 100
+        delta = F / J
+        trial_v = v_coarse + np.arange(-J, J + 1) * delta
+
+        metrics = np.zeros(len(trial_v))
+        idx = np.arange(2 * LTF_SYM_LEN)
+        for i, v_try in enumerate(trial_v):
+            W = np.exp(-1j * 2 * np.pi * v_try * idx / LTF_SYM_LEN)  # note: NEGATIVE sign to *remove* offset v_try
+            rw = W * r_v
+            metrics[i] = np.real(rw.conj() @ B @ rw)
+
+        best_i = np.argmax(metrics)
+        if best_i == 0 or best_i == len(trial_v) - 1:
+            v_hat = trial_v[best_i]
+        else:
+            y0, y1, y2 = metrics[best_i - 1], metrics[best_i], metrics[best_i + 1]
+            denom = (y0 - 2 * y1 + y2)
+            offset = 0.5 * (y0 - y2) / denom if denom != 0 else 0.0
+            v_hat = trial_v[best_i] + offset * delta
+
+        fine_cfo = v_hat * (Fs / LTF_SYM_LEN)  # v_hat is the TOTAL offset now, not a residual
         true_start = lt1_start - LTF_CP_LEN - STF_LEN
 
         return SyncResult(
             packet_start=true_start,
-            cfo_hz=coarse.cfo_hz + fine_cfo,
+            cfo_hz=fine_cfo,   
             H=np.zeros(self.link.nFFT, dtype=complex),
         )
+
+    def _known_ltf_time_domain(self) -> np.ndarray:
+        N = self.link.nFFT
+        freq_domain = np.zeros(N, dtype=np.complex64)
+        for i, k in enumerate(LONG_TRAINING_SUBCARRIERS):
+            b = fft_bin_from_subcarrier(k, N)
+            freq_domain[b] = LONG_TRAINING_VALUES[i]
+        return fftlib.ifft(freq_domain)
+    
+    def _ls_channel_estimation(self, signal: np.ndarray, sync: SyncResult) -> np.ndarray:
+        Fs = self.link.nFFT / self.link.T
+        STF_LEN = self.link.nFFT // 4 * 10  # 160 samples
+        LTF_CP_LEN = self.link.cpLenTraining  # 32
+        LTF_SYM_LEN = self.link.nFFT  # 64
+        K = self.link.cpLenTraining
+        N = self.link.nFFT
+        H = np.zeros(LTF_SYM_LEN, dtype=complex)
+
+        # Apply full (coarse + fine) CFO correction
+        n = np.arange(len(signal))
+        corrected = signal * np.exp(-1j * 2 * np.pi * sync.cfo_hz * n / Fs)
+
+        # Extract LT1 and LT2 (sync.packet_start is the true preamble start)
+        lt1_start = sync.packet_start + STF_LEN + LTF_CP_LEN
+        lt1 = corrected[lt1_start : lt1_start + LTF_SYM_LEN]
+        lt2 = corrected[lt1_start + LTF_SYM_LEN : lt1_start + 2 * LTF_SYM_LEN]
+        if len(lt1) < LTF_SYM_LEN or len(lt2) < LTF_SYM_LEN:
+            return H
+
+        s = self._known_ltf_time_domain()
+        S = np.zeros((N, K), dtype=complex)
+        for k in range(K):
+            S[:, k] = np.roll(s, k)
+        try:
+            S_inv = np.linalg.pinv(S)
+        except np.linalg.LinAlgError:
+            return self._channel_estimation(signal, sync)
+        h_hat = S_inv @ ((lt1 + lt2) / 2)
+        return np.fft.fft(h_hat, n=N)
 
     def _channel_estimation(self, signal: np.ndarray, sync: SyncResult) -> np.ndarray:
         """
