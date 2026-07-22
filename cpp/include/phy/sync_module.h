@@ -16,10 +16,16 @@ namespace wifi80211a {
         complexVector H;
     };
 
-    SyncResult detect_and_sync(const std::vector<std::complex<double>>& signal, const LinkSettings& linkSettings);
-    SyncResult coarse_sync(const std::vector<std::complex<double>>& signal, const LinkSettings& linkSettings);
-    SyncResult fine_sync(const std::vector<std::complex<double>>& signal, const SyncResult& coarse_result, const LinkSettings& linkSettings);
-    std::vector<std::complex<double>> channel_estimation(const std::vector<std::complex<double>>& signal, const SyncResult& fine_result, const LinkSettings& linkSettings);
+    SyncResult detect_and_sync(const complexVector& signal, const LinkSettings& linkSettings);
+    SyncResult coarse_sync(const complexVector& signal,
+        const LinkSettings& linkSettings, const double& threshold = 0.7);
+    SyncResult coarse_cfo(const complexVector& signal, SyncResult& syncResult, const LinkSettings& linkSettings);
+    SyncResult fine_sync(const complexVector& signal, const SyncResult& coarse_result, const LinkSettings& linkSettings);
+    complexVector channel_estimation(const complexVector& signal, const SyncResult& fine_result, const LinkSettings& linkSettings);
+    /// Least-squares channel estimate obtained by deconvolving the LTF cyclic
+    /// prefix via a shift-matrix pseudo-inverse. Falls back to `channel_estimation`
+    /// if the shift matrix is (numerically) singular.
+    complexVector ls_channel_estimation(const complexVector& signal, const SyncResult& sync, const LinkSettings& linkSettings);
     int longest_plateau_end(const std::vector<int>& above, int min_plateau);
 }
 #endif //WIFI80211A_SYNC_MODULE_H

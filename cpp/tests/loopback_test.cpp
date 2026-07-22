@@ -83,7 +83,12 @@ namespace
         std::uniform_int_distribution<int> delay_dist(0, 234);
         const complexVector noisy_signal = add_awgn(tx_signal, snr_db, gen);
         const int delay = delay_dist(gen);
-        const complexVector rx_signal = add_delay(noisy_signal, delay, gen);
+        complexVector rx_signal = add_delay(noisy_signal, delay, gen);
+        std::uniform_real_distribution cfo_dist(-100e3, 100e3);
+        const double cfo_hz = cfo_dist(gen);
+        std::uniform_real_distribution<double> phase_dist(-M_PI, M_PI);
+        const double phaseDelay = phase_dist(gen);
+        rx_signal = add_cfo_and_phase(rx_signal, cfo_hz, 20e6, phaseDelay);
 
         const RxResult rx = receive(rx_signal, link_settings, scrambler_seed);
 
@@ -132,8 +137,8 @@ namespace
 
 int main()
 {
-    constexpr int NUM_BITS = 1024;
-    const std::vector<double> SNR_RANGE = {0, 5, 10, 15, 20, 25, 30};
+    constexpr int NUM_BITS = 1e4;
+    const std::vector<double> SNR_RANGE = {0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30};
 
     const std::vector<std::pair<ModulationTypes, CodingRates>> CONFIGS = {
         {ModulationTypes::BPSK, CodingRates::R12},

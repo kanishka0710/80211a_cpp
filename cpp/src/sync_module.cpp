@@ -1,4 +1,10 @@
+//
+// C++ port of python/sync_module.py
+//
+
 #include "phy/sync_module.h"
+
+#include <Eigen/Dense>
 
 #include <algorithm>
 #include <cmath>
@@ -7,7 +13,6 @@
 #include "phy/preamble_module.h"
 
 namespace wifi80211a {
-
     namespace {
         double sample_rate(const LinkSettings& linkSettings) {
             return linkSettings.getNFFT() / linkSettings.getT();
@@ -30,116 +35,198 @@ namespace wifi80211a {
             }
             return acc;
         }
+
+        // Builds the known LTF time-domain sequence (length nFFT) by placing the
+        // BPSK training values on their subcarriers and taking the IFFT.
+        complexVector known_ltf_time_domain(const LinkSettings& linkSettings) {
+            const int nFFT = linkSettings.getNFFT();
+            complexVector ltf_freq(nFFT, std::complex<double>(0.0, 0.0));
+            for (std::size_t i = 0; i < kLongTrainingSubcarriers.size(); i++) {
+                const int index = fft_bin_from_subcarrier(kLongTrainingSubcarriers[i], nFFT);
+                ltf_freq[index] = std::complex<double>(static_cast<double>(kLongTrainingValues[i]), 0.0);
+            }
+            return inverse_fft(ltf_freq, nFFT);
+        }
+
+        // ---- Small Eigen-based helpers used for the LTF shift-matrix ----------
+        Eigen::VectorXcd to_eigen(const complexVector& v) {
+            return Eigen::Map<const Eigen::VectorXcd>(v.data(), static_cast<Eigen::Index>(v.size()));
+        }
+
+        // Circular shift of `s` by `shift` positions, similar to numpy.roll
+        Eigen::VectorXcd roll(const Eigen::VectorXcd& s, int shift) {
+            const int n = static_cast<int>(s.size());
+            Eigen::VectorXcd out(n);
+            for (int i = 0; i < n; i++) {
+                out[i] = s[((i - shift) % n + n) % n];
+            }
+            return out;
+        }
+
+        // Builds a (base.size() x cols) matrix whose j-th column is roll(base, j).
+        Eigen::MatrixXcd build_shift_matrix(const Eigen::VectorXcd& base, int cols) {
+            Eigen::MatrixXcd S(base.size(), cols);
+            for (int col = 0; col < cols; col++) {
+                S.col(col) = roll(base, col);
+            }
+            return S;
+        }
+
+        Eigen::MatrixXcd pseudo_inverse(const Eigen::MatrixXcd& M) {
+            return M.completeOrthogonalDecomposition().pseudoInverse();
+        }
     }
 
-    SyncResult detect_and_sync(const std::vector<std::complex<double>>& signal, const LinkSettings& linkSettings) {
-        auto coarse = coarse_sync(signal, linkSettings);
-        auto fine = fine_sync(signal, coarse, linkSettings);
-        auto H = channel_estimation(signal, fine, linkSettings);
-        return SyncResult{fine.packet_start, fine.cfo_hz, H};
+    SyncResult detect_and_sync(const complexVector& signal, const LinkSettings& linkSettings) {
+        SyncResult timing = coarse_sync(signal, linkSettings);
+        const SyncResult coarse = coarse_cfo(signal, timing, linkSettings);
+        const SyncResult fine = fine_sync(signal, coarse, linkSettings);
+
+        SyncResult final_result{
+            fine.packet_start, coarse.cfo_hz, complexVector(linkSettings.getNFFT(), std::complex<double>(0.0, 0.0))
+        };
+        final_result.H = ls_channel_estimation(signal, final_result, linkSettings);
+        return final_result;
     }
 
-    // Schmidl & Cox timing/CFO estimate using the STF's 16-sample periodicity.
-    SyncResult coarse_sync(const std::vector<std::complex<double>>& signal, const LinkSettings& linkSettings) {
-        const int L = linkSettings.getNFFT() / 4;
-        const int N = static_cast<int>(signal.size()) - 2 * L;
+    SyncResult coarse_sync(const complexVector& signal, const LinkSettings& linkSettings,
+                           const double& threshold) {
+        const int M = linkSettings.getNFFT() / 4;
+        constexpr int L = 10;
+        const int windowLength = L * M;
+        const int N = static_cast<int>(signal.size()) - windowLength;
         if (N <= 0) {
             return SyncResult{0, 0.0, complexVector(linkSettings.getNFFT(), std::complex<double>(0.0, 0.0))};
         }
 
-        complexVector a(signal.begin(), signal.begin() + N + L);
-        complexVector b(signal.begin() + L, signal.begin() + N + 2 * L);
+        complexVector P(N, std::complex<double>(0.0, 0.0));
+        for (int k = 0; k < L - 1; k++) {
+            const int leftStart = k * M;
+            const int rightStart = (k + 1) * M;
+            const int segLen = N + M;
 
-        complexVector x(N + L);
-        std::vector<double> xr(N + L);
-        for (int n = 0; n < N + L; n++) {
-            x[n] = a[n] * std::conj(b[n]);
-            xr[n] = std::norm(b[n]);
-        }
+            complexVector a(segLen);
+            for (int i = 0; i < segLen; i++) {
+                a[i] = signal[rightStart + i] * std::conj(signal[leftStart + i]);
+            }
 
-        // Sliding-window sums of length L, updated incrementally (P/R at lag L).
-        complexVector P(N);
-        std::vector<double> R(N);
-        std::complex<double> pSum(0.0, 0.0);
-        double rSum = 0.0;
-        for (int n = 0; n < L; n++) {
-            pSum += x[n];
-            rSum += xr[n];
-        }
-        P[0] = pSum;
-        R[0] = rSum;
-        for (int n = 1; n < N; n++) {
-            pSum += x[n + L - 1] - x[n - 1];
-            rSum += xr[n + L - 1] - xr[n - 1];
-            P[n] = pSum;
-            R[n] = rSum;
-        }
+            std::complex<double> windowSum(0.0, 0.0);
+            for (int m = 0; m < M; m++) windowSum += a[m];
+            P[0] += windowSum;
 
-        std::vector<double> M(N);
-        for (int k = 0; k < N; k++) {
-            const double r = std::max(R[k], 1e-12);
-            M[k] = std::pow(std::abs(P[k]), 2) / (r * r);
-        }
-
-        // The STF produces a long plateau (~128 samples). Spikes in noise/data
-        // are short -- pick the end of the longest run above threshold.
-        constexpr double threshold = 0.7;
-        constexpr int min_plateau = 48;
-
-        std::vector<int> above;
-        for (int k = 0; k < N; k++) {
-            if (M[k] > threshold) above.push_back(k);
-        }
-
-        int packet_start;
-        if (above.empty()) {
-            packet_start = static_cast<int>(std::max_element(M.begin(), M.end()) - M.begin());
-        } else {
-            packet_start = longest_plateau_end(above, min_plateau);
-            if (packet_start == -1) {
-                packet_start = static_cast<int>(std::max_element(M.begin(), M.end()) - M.begin());
+            for (int n = 1; n < N; n++) {
+                windowSum += a[n + M - 1] - a[n - 1];
+                P[n] += windowSum;
             }
         }
 
-        const double Fs = sample_rate(linkSettings);
-        const double cfo_hz = std::arg(P[packet_start]) / (2 * M_PI * L / Fs);
-        return SyncResult{packet_start, cfo_hz, complexVector(linkSettings.getNFFT(), std::complex<double>(0.0, 0.0))};
+        std::vector<double> signalMag(signal.size());
+        for (std::size_t i = 0; i < signal.size(); i++) {
+            signalMag[i] = std::pow(std::abs(signal[i]), 2);
+        }
+
+        std::vector<double> E(N, 0.0);
+        double windowSum = 0.0;
+        for (int i = 0; i < windowLength; i++) windowSum += signalMag[i];
+        E[0] = windowSum;
+        for (int i = 1; i < N; i++) {
+            windowSum += signalMag[i + windowLength - 1] - signalMag[i - 1];
+            E[i] = windowSum;
+        }
+        for (int i = 0; i < N; i++) E[i] = std::max(E[i], 1e-12);
+
+        std::vector<double> lambda(N);
+        for (int i = 0; i < N; i++) {
+            lambda[i] = std::pow(static_cast<double>(L) / (L - 1) * std::abs(P[i]) / E[i], 2);
+        }
+
+        const double peak = *std::ranges::max_element(lambda);
+        const double cutoff = threshold * peak;
+        int packetStart = -1;
+        double bestVal = -1.0;
+        for (int n = 0; n < N; n++) {
+            if (lambda[n] >= cutoff && lambda[n] > bestVal) {
+                bestVal = lambda[n];
+                packetStart = n;
+            }
+        }
+
+        return SyncResult{packetStart, 0.0, complexVector(linkSettings.getNFFT(), std::complex<double>(0.0, 0.0))};
     }
 
-    // Refines timing and CFO using the LTF.
-    SyncResult fine_sync(const std::vector<std::complex<double>>& signal, const SyncResult& coarse_result, const LinkSettings& linkSettings) {
+    // Morelli-Mengali coarse CFO from the L-part STF (eqs. 18-21)
+    SyncResult coarse_cfo(const complexVector& signal, SyncResult& syncResult, const LinkSettings& linkSettings) {
+        constexpr int L = 10;
+        constexpr int H = L / 2;
+        const int M = linkSettings.getNFFT() / 4;
+        const int N = L * M;
+
+        if (syncResult.packet_start < 0 ||
+            syncResult.packet_start + N > static_cast<int>(signal.size())) {
+            return syncResult;
+        }
+        const complexVector y(signal.begin() + syncResult.packet_start,
+                              signal.begin() + syncResult.packet_start + N);
+
+        const double denom = static_cast<double>(H) *
+            (4.0 * H * H - 6.0 * L * H + 3.0 * L * L - 1.0);
+        std::vector<double> w(H);
+        for (int m = 1; m <= H; m++) {
+            w[m - 1] = 3.0 * (static_cast<double>((L - m) * (L - m + 1)) - static_cast<double>(H * (L - H))) / denom;
+        }
+
+        complexVector R(H + 1, std::complex<double>(0.0, 0.0));
+        for (int m = 0; m <= H; m++) {
+            std::complex<double> acc(0.0, 0.0);
+            const int count = N - m * M;
+            for (int i = 0; i < count; i++) {
+                acc += std::conj(y[i]) * y[i + m * M];
+            }
+            R[m] = acc / static_cast<double>(count);
+        }
+
+        std::vector<double> psi(H);
+        for (int m = 1; m <= H; m++) {
+            double x = std::arg(R[m]) - std::arg(R[m - 1]) + M_PI;
+            x = std::fmod(x, 2.0 * M_PI);
+            if (x < 0.0) x += 2.0 * M_PI;
+            psi[m - 1] = x - M_PI;
+        }
+
+        double weightedSum = 0.0;
+        for (int m = 0; m < H; m++) weightedSum += w[m] * psi[m];
+        const double v_hat = static_cast<double>(L) / (2.0 * M_PI) * weightedSum;
+
+        const double Fs = sample_rate(linkSettings);
+        syncResult.cfo_hz = v_hat * Fs / static_cast<double>(N);
+        return syncResult;
+    }
+
+    SyncResult fine_sync(const complexVector& signal, const SyncResult& coarse_result,
+                         const LinkSettings& linkSettings) {
         const double Fs = sample_rate(linkSettings);
         const int nFFT = linkSettings.getNFFT();
-        const int L = nFFT / 4;
-        const int stf_len = L * 10;              // 160 samples
+        const int stf_len = nFFT / 4 * 10; // 160 samples
         const int ltf_cp_len = linkSettings.getCPLenTraining(); // 32 samples (GI2)
-        const int ltf_sym_len = nFFT;             // 64 samples
+        const int ltf_sym_len = nFFT; // 64 samples
 
-        const complexVector corrected = apply_cfo_correction(signal, coarse_result.cfo_hz, Fs);
+        const complexVector ltf_known = known_ltf_time_domain(linkSettings);
+        const complexVector zeroH(nFFT, std::complex<double>(0.0, 0.0));
 
-        // Build known LT1 time-domain sequence (no CP).
-        complexVector ltf_freq(nFFT, std::complex<double>(0.0, 0.0));
-        for (std::size_t i = 0; i < kLongTrainingSubcarriers.size(); i++) {
-            const int index = fft_bin_from_subcarrier(kLongTrainingSubcarriers[i], nFFT);
-            ltf_freq[index] = std::complex<double>(static_cast<double>(kLongTrainingValues[i]), 0.0);
-        }
-        const complexVector ltf_known = inverse_fft(ltf_freq, nFFT);
-
-        // Nominal LT1 start: end of S&C plateau + 2 STF periods + GI2.
-        const int lt1_nominal = coarse_result.packet_start + 2 * L + ltf_cp_len;
-        const int signal_len = static_cast<int>(corrected.size());
-        const int max_start = std::max(0, signal_len - ltf_sym_len);
-
-        // Cross-correlate over a +/-32-sample search window.
-        constexpr int search_range = 32;
+        const int lt1_nominal = coarse_result.packet_start + stf_len + ltf_cp_len;
+        constexpr int search_range = 48;
         const int search_start = std::max(0, lt1_nominal - search_range);
+        const int signal_len = static_cast<int>(signal.size());
+        const int max_start = std::max(0, signal_len - ltf_sym_len);
         const int search_end = std::min(max_start, lt1_nominal + search_range);
+
+        // Timing search correlates against the CFO-precompensated signal.
+        const complexVector corrected = apply_cfo_correction(signal, coarse_result.cfo_hz, Fs);
 
         double best_corr = -1.0;
         int lt1_start = std::clamp(lt1_nominal, 0, max_start);
         for (int d = search_start; d <= search_end; d++) {
             const double corr = std::abs(vdot(ltf_known, corrected.begin() + d));
-            // Prefer the earliest peak on ties so we do not drift toward LT2.
             if (corr > best_corr + 1e-9) {
                 best_corr = corr;
                 lt1_start = d;
@@ -147,23 +234,73 @@ namespace wifi80211a {
         }
 
         if (lt1_start < 0 || lt1_start + 2 * ltf_sym_len > signal_len) {
-            // Fall back to coarse timing if the LTF window falls off the buffer.
-            const int true_start = coarse_result.packet_start - (stf_len - 2 * L);
-            return SyncResult{true_start, coarse_result.cfo_hz, complexVector(nFFT, std::complex<double>(0.0, 0.0))};
+            return SyncResult{coarse_result.packet_start, coarse_result.cfo_hz, zeroH};
         }
 
-        const complexVector lt1(corrected.begin() + lt1_start, corrected.begin() + lt1_start + ltf_sym_len);
-        const complexVector lt2(corrected.begin() + lt1_start + ltf_sym_len, corrected.begin() + lt1_start + 2 * ltf_sym_len);
-        const double fine_cfo = std::arg(vdot(lt1, lt2.begin())) / (2 * M_PI * ltf_sym_len / Fs);
+        const complexVector lt1(signal.begin() + lt1_start, signal.begin() + lt1_start + ltf_sym_len);
+        const complexVector lt2(signal.begin() + lt1_start + ltf_sym_len,
+                                signal.begin() + lt1_start + 2 * ltf_sym_len);
 
-        // True preamble start = LT1 start - GI2 - STF.
+        const double v_coarse = coarse_result.cfo_hz * (static_cast<double>(ltf_sym_len) / Fs);
+
+        const int Kp = ltf_cp_len;
+        const int rows = 2 * ltf_sym_len;
+
+        Eigen::VectorXcd r_v(rows);
+        r_v.head(ltf_sym_len) = to_eigen(lt1);
+        r_v.tail(ltf_sym_len) = to_eigen(lt2);
+
+        const Eigen::VectorXcd ltf_known_e = to_eigen(ltf_known);
+        Eigen::VectorXcd s_ext(rows);
+        s_ext.head(ltf_sym_len) = ltf_known_e;
+        s_ext.tail(ltf_sym_len) = ltf_known_e;
+
+        const Eigen::MatrixXcd S = build_shift_matrix(s_ext, Kp);
+        const Eigen::MatrixXcd Spinv = pseudo_inverse(S);
+
+        constexpr double F = 0.15;
+        constexpr int J = 100;
+        constexpr double delta = F / J;
+
+        std::vector<double> trial_v(2 * J + 1);
+        for (int i = 0; i <= 2 * J; i++) trial_v[i] = v_coarse + (i - J) * delta;
+
+        std::vector<double> metrics(trial_v.size());
+        for (std::size_t i = 0; i < trial_v.size(); i++) {
+            Eigen::VectorXcd rw(rows);
+            for (int n = 0; n < rows; n++) {
+                const double phase = -2.0 * M_PI * trial_v[i] * n / ltf_sym_len;
+                rw[n] = r_v[n] * std::exp(std::complex<double>(0.0, phase));
+            }
+            const Eigen::VectorXcd z = S * (Spinv * rw);
+            metrics[i] = rw.dot(z).real(); // rw.dot(z) = rw^H * z
+        }
+
+        const std::size_t best_i =
+            static_cast<std::size_t>(std::max_element(metrics.begin(), metrics.end()) - metrics.begin());
+        double v_hat;
+        if (best_i == 0 || best_i == trial_v.size() - 1) {
+            v_hat = trial_v[best_i];
+        } else {
+            const double y0 = metrics[best_i - 1];
+            const double y1 = metrics[best_i];
+            const double y2 = metrics[best_i + 1];
+            const double parabolaDenom = y0 - 2.0 * y1 + y2;
+            const double offset = (parabolaDenom != 0.0) ? 0.5 * (y0 - y2) / parabolaDenom : 0.0;
+            v_hat = trial_v[best_i] + offset * delta;
+        }
+
+        const double fine_cfo = v_hat * (Fs / ltf_sym_len); // v_hat is the TOTAL offset, not a residual.
         const int true_start = lt1_start - ltf_cp_len - stf_len;
-        return SyncResult{true_start, coarse_result.cfo_hz + fine_cfo, complexVector(nFFT, std::complex<double>(0.0, 0.0))};
+
+        return SyncResult{true_start, fine_cfo, zeroH};
     }
 
-    // Estimates the frequency-domain channel H[k] from the LTF.
-    std::vector<std::complex<double>> channel_estimation(const std::vector<std::complex<double>>& signal,
-        const SyncResult& fine_result, const LinkSettings& linkSettings) {
+    // Estimates the frequency-domain channel H[k] from the LTF via direct
+    // division (FFT(LTF) / known LTF spectrum).
+    complexVector channel_estimation(const complexVector& signal,
+                                     const SyncResult& fine_result,
+                                     const LinkSettings& linkSettings) {
         const double Fs = sample_rate(linkSettings);
         const int nFFT = linkSettings.getNFFT();
         const int stf_len = nFFT / 4 * 10;
@@ -180,7 +317,8 @@ namespace wifi80211a {
         }
 
         const complexVector lt1(corrected.begin() + lt1_start, corrected.begin() + lt1_start + ltf_sym_len);
-        const complexVector lt2(corrected.begin() + lt1_start + ltf_sym_len, corrected.begin() + lt1_start + 2 * ltf_sym_len);
+        const complexVector lt2(corrected.begin() + lt1_start + ltf_sym_len,
+                                corrected.begin() + lt1_start + 2 * ltf_sym_len);
         const complexVector lt1_fft = fft(lt1, nFFT);
         const complexVector lt2_fft = fft(lt2, nFFT);
 
@@ -196,37 +334,42 @@ namespace wifi80211a {
         return H;
     }
 
-    // Returns the last value of the longest contiguous run of consecutive indices in `above`.
-    int longest_plateau_end(const std::vector<int>& above, int min_plateau) {
-        if (above.empty()) return -1;
+    complexVector ls_channel_estimation(const complexVector& signal, const SyncResult& sync,
+                                        const LinkSettings& linkSettings) {
+        const double Fs = sample_rate(linkSettings);
+        const int nFFT = linkSettings.getNFFT();
+        const int stf_len = nFFT / 4 * 10; // 160 samples
+        const int ltf_cp_len = linkSettings.getCPLenTraining(); // 32
+        const int ltf_sym_len = nFFT; // 64
+        const int K = ltf_cp_len;
+        const int N = nFFT;
 
-        std::vector<int> breaks;
-        for (std::size_t i = 0; i + 1 < above.size(); i++) {
-            if (above[i + 1] - above[i] > 1) {
-                breaks.push_back(static_cast<int>(i));
-            }
+        complexVector H(ltf_sym_len, std::complex<double>(0.0, 0.0));
+
+        const complexVector corrected = apply_cfo_correction(signal, sync.cfo_hz, Fs);
+
+        const int lt1_start = sync.packet_start + stf_len + ltf_cp_len;
+        if (lt1_start < 0 || lt1_start + 2 * ltf_sym_len > static_cast<int>(corrected.size())) {
+            return H;
         }
 
-        std::vector<int> boundaries;
-        boundaries.reserve(breaks.size() + 2);
-        boundaries.push_back(-1);
-        boundaries.insert(boundaries.end(), breaks.begin(), breaks.end());
-        boundaries.push_back(static_cast<int>(above.size()) - 1);
+        const complexVector lt1(corrected.begin() + lt1_start, corrected.begin() + lt1_start + ltf_sym_len);
+        const complexVector lt2(corrected.begin() + lt1_start + ltf_sym_len,
+                                corrected.begin() + lt1_start + 2 * ltf_sym_len);
 
-        int best_len = 0;
-        int best_end = -1;
-        for (std::size_t i = 0; i + 1 < boundaries.size(); i++) {
-            const int start_i = boundaries[i] + 1;
-            const int end_i = boundaries[i + 1];
-            const int run_len = end_i - start_i + 1;
-            if (run_len > best_len) {
-                best_len = run_len;
-                best_end = above[end_i];
-            }
+        complexVector avg(ltf_sym_len);
+        for (int i = 0; i < ltf_sym_len; i++) avg[i] = (lt1[i] + lt2[i]) / 2.0;
+
+        const Eigen::VectorXcd s = to_eigen(known_ltf_time_domain(linkSettings));
+        const Eigen::MatrixXcd S = build_shift_matrix(s, K);
+        const Eigen::VectorXcd h_hat = pseudo_inverse(S) * to_eigen(avg);
+
+        if (!h_hat.allFinite()) {
+            return channel_estimation(signal, sync, linkSettings);
         }
-        if (best_len < min_plateau) {
-            return -1;
-        }
-        return best_end;
+
+        complexVector h_padded(N, std::complex<double>(0.0, 0.0));
+        std::copy(h_hat.data(), h_hat.data() + h_hat.size(), h_padded.begin());
+        return fft(h_padded, N);
     }
 }

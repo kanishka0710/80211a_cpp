@@ -36,6 +36,14 @@ if(NOT FFTW3_FOUND)
     pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
     add_library(FFTW3::fftw3 ALIAS PkgConfig::FFTW3)
 endif()
+
+find_package(Eigen3 CONFIG QUIET)
+if(NOT Eigen3_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(EIGEN3 REQUIRED IMPORTED_TARGET eigen3)
+    add_library(Eigen3::Eigen ALIAS PkgConfig::EIGEN3)
+endif()
+
 find_package(Matplot++ CONFIG REQUIRED)
 
 # Guard against a broken Matplot++ install that baked in Windows Conda paths
@@ -133,7 +141,7 @@ target_compile_definitions(loopback_test PRIVATE
 include(CTest)
 add_test(NAME forward_error_correction_scrambler COMMAND test_forward_error_correction)
 
-target_link_libraries(wifi_phy PRIVATE FFTW3::fftw3)
+target_link_libraries(wifi_phy PRIVATE FFTW3::fftw3 Eigen3::Eigen)
 
 target_include_directories(wifi_phy
     PUBLIC

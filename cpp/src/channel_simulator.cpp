@@ -44,6 +44,14 @@ namespace wifi80211a
         return noisySignal;
     }
 
+    complexVector add_cfo_and_phase(complexVector& signal, double cfoHz, int sampleRate, double phaseRad) {
+        for (std::size_t i = 0; i < signal.size(); i++) {
+            const double phase = 2.0 * M_PI * cfoHz * static_cast<double>(i) / sampleRate + phaseRad;
+            signal[i] *= std::exp(std::complex<double>(0.0, phase));
+        }
+        return signal;
+    }
+
     complexVector add_multipath(const complexVector& signal)
     {
         return signal;

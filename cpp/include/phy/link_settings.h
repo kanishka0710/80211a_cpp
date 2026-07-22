@@ -57,6 +57,7 @@ namespace wifi80211a {
         double guard_interval = 0.8e-6;      // 0.8 µs
         double occupied_bandwidth = 16.6e6;  // 16.6 MHz
 
+
         std::map<ModulationTypes, int8_t> bits_per_subcarrier = {
             {ModulationTypes::BPSK, 1},
             {ModulationTypes::QPSK, 2},

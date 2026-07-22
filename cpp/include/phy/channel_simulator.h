@@ -18,6 +18,8 @@ namespace wifi80211a
     complexVector add_awgn(const complexVector& signal, double snr_db, std::mt19937& gen);
 
     complexVector add_multipath(const complexVector& signal);
+
+    complexVector add_cfo_and_phase(complexVector& signal, double cfoHz, int sampleRate, double phaseRad);
 }
 
 

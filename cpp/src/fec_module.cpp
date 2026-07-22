@@ -7,9 +7,22 @@
 #include <cstddef>
 #include <limits>
 #include <algorithm>
+#include <stdexcept>
 
 namespace wifi80211a
 {
+    namespace
+    {
+        // Mother-code input length must be a multiple of this for the puncture
+        // pattern to consume whole blocks (3 input bits -> 6 mother bits for
+        // R3/4, 2 input bits -> 4 mother bits for R2/3).
+        int input_period_for_puncture_(const CodingRates rate)
+        {
+            if (rate == CodingRates::R34) return 3;
+            if (rate == CodingRates::R23) return 2;
+            return 1;
+        }
+    }
 
     std::vector<int> performFEC(
         std::vector<int> data_bits,
@@ -19,6 +32,19 @@ namespace wifi80211a
 
         // Step 1 — Scrambler
         std::vector<int> scrambled_bits = scramble_(data_bits, scrambler_seed_7bit);
+
+        // Step 1b — Pad (before the 6 tail bits) so the mother-coded stream ends
+        // up an exact multiple of the puncture pattern's block size. Without
+        // this, puncture_() reads past the end of the mother-coded stream
+        // whenever (data_bits.size() + 6) isn't already a multiple of the
+        // period, corrupting the bitstream fed into constellation mapping.
+        constexpr int kTailBits = 6;
+        const int period = input_period_for_puncture_(coding_rate);
+        const int remainder = (static_cast<int>(scrambled_bits.size()) + kTailBits) % period;
+        const int pad = remainder == 0 ? 0 : period - remainder;
+        if (pad > 0) {
+            scrambled_bits.insert(scrambled_bits.end(), pad, 0);
+        }
 
         // Step 2 — Convolutional tail
         std::vector<int> tailed_bits = append_convolutional_tail_(scrambled_bits);
@@ -152,6 +178,7 @@ namespace wifi80211a
             }
             return std::make_tuple(output_bits, mask_bits);
         }
+        throw std::invalid_argument("depuncture_: unhandled CodingRates value");
     }
 
     int LFSRStep_(std::vector<int>& regs)
