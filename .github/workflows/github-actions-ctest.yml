@@ -1,0 +1,32 @@
+name: Test
+on:
+  push:
+jobs:
+  test-project:
+    name: Test Project
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config curl zip unzip tar
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: "cpp/vcpkg.json"
+
+      - name: Build Project
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          source-dir: cpp
+          build-dir: cpp/build
+          generator: Ninja
+          options: |
+            CMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+
+      - name: Test Project
+        uses: threeal/ctest-action@v1.1.0
+        with:
+          test-dir: cpp/build
