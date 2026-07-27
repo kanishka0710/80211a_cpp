@@ -11,24 +11,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            pkg-config \
+            libx11-dev \
+            libxi-dev \
+            libxmu-dev \
+            libgl1-mesa-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libtiff-dev
+
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'ea0dbe4d3251808724beebbc4342ba2c3d353c33' # pin a known-good vcpkg baseline
+          # Keep in sync with cpp/vcpkg.json "builtin-baseline"
+          vcpkgGitCommitId: 'b9db60d8be5cd434b195da8cffc2ee82e227fac4'
+          vcpkgJsonGlob: 'cpp/vcpkg.json'
 
       - name: Configure
+        working-directory: cpp
         run: |
           cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
-        env:
-          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
+        working-directory: cpp
         run: cmake --build build --parallel
 
       - name: Run test suite
-        working-directory: build
+        working-directory: cpp/build
         run: ctest --output-on-failure --parallel
