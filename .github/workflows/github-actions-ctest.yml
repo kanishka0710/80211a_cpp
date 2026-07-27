@@ -32,7 +32,7 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           # Keep in sync with cpp/vcpkg.json "builtin-baseline"
-          vcpkgGitCommitId: 'b9db60d8be5cd434b195da8cffc2ee82e227fac4'
+          vcpkgGitCommitId: '81de6771512413aaf89ea77add5ad1fda126b9d0'
           vcpkgJsonGlob: 'cpp/vcpkg.json'
 
       - name: Configure
