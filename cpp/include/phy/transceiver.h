@@ -16,8 +16,8 @@
 
 namespace wifi80211a {
 
-    complexVector tx_chain(const std::vector<int>& bits, LinkSettings& linkSettings, PilotLFSR& pilotLfsr);
-    std::vector<int> rx_chain(complexVector& signal, LinkSettings& linkSettings);
+    complexVector generate_transmit_symbols(const std::vector<int>& bits, LinkSettings& linkSettings, PilotLFSR& pilotLfsr);
+    std::vector<int> receive_symbols(complexVector& signal, LinkSettings& linkSettings);
 
 } // wifi80211a
 

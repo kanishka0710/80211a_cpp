@@ -122,15 +122,11 @@ if __name__ == "__main__":
 
     CONFIGS = [
         (ModulationTypes.BPSK,  CodingRates.R12),
-        (ModulationTypes.BPSK,  CodingRates.R23),
         (ModulationTypes.BPSK,  CodingRates.R34),
         (ModulationTypes.QPSK,  CodingRates.R12),
-        (ModulationTypes.QPSK,  CodingRates.R23),
         (ModulationTypes.QPSK,  CodingRates.R34),
         (ModulationTypes.QAM16, CodingRates.R12),
-        (ModulationTypes.QAM16, CodingRates.R23),
         (ModulationTypes.QAM16, CodingRates.R34),
-        (ModulationTypes.QAM64, CodingRates.R12),
         (ModulationTypes.QAM64, CodingRates.R23),
         (ModulationTypes.QAM64, CodingRates.R34),
     ]

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace wifi80211a {
@@ -17,6 +18,28 @@ namespace wifi80211a {
         R12,
         R23,
         R34
+    };
+
+    std::unordered_map<int, std::tuple<ModulationTypes, CodingRates>> rateMap = {
+        {1, {ModulationTypes::BPSK, CodingRates::R12}},
+        {2, {ModulationTypes::BPSK, CodingRates::R34}},
+        {3, {ModulationTypes::QPSK, CodingRates::R12}},
+        {4, {ModulationTypes::QPSK, CodingRates::R34}},
+        {5, {ModulationTypes::QAM16, CodingRates::R12}},
+        {6, {ModulationTypes::QAM16, CodingRates::R34}},
+        {7, {ModulationTypes::QAM64, CodingRates::R23}},
+        {8, {ModulationTypes::QAM64, CodingRates::R34}}
+    };
+
+    std::unordered_map<std::tuple<ModulationTypes, CodingRates>, int> inverseRateMap = {
+        {{ModulationTypes::BPSK, CodingRates::R12}, 1},
+        {{ModulationTypes::BPSK, CodingRates::R34}, 2},
+        {{ModulationTypes::QPSK, CodingRates::R12}, 3},
+        {{ModulationTypes::QPSK, CodingRates::R34}, 4},
+        {{ModulationTypes::QAM16, CodingRates::R12}, 5},
+        {{ModulationTypes::QAM16, CodingRates::R34}, 6},
+        {{ModulationTypes::QAM64, CodingRates::R23}, 7},
+        {{ModulationTypes::QAM64, CodingRates::R34}, 8}
     };
 
     class LinkSettings {

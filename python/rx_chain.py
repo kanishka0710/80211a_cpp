@@ -6,9 +6,11 @@ from ofdm_module import OFDMModule
 from modulation_module import map_constellation_to_bits
 from interleaver_module import deinterleave
 from fec_module import perform_FEC_RX
+from signal_module import decode_signal_header
 from utils import fft_bin_from_subcarrier
 
 PREAMBLE_LEN = 320   # 160-sample STF + 160-sample LTF
+SIGNAL_LEN   = 80    # 64-sample FFT + 16-sample CP (1 OFDM symbol: RATE + LENGTH)
 
 
 def _equalize_with_ltf(
@@ -62,11 +64,14 @@ def receive(
         sync (timing + CFO + channel estimate)
         → CFO correction
         → strip preamble
+        → decode SIGNAL field (RATE + LENGTH) → verify against caller-supplied params
+        → strip SIGNAL field
         → OFDM demodulate (CP strip + FFT)
         → LTF-based per-subcarrier equalization
         → constellation de-map (hard decision)
         → de-interleave
         → FEC RX (depuncture → Viterbi → descramble)
+        → trim to the PSDU length carried in the SIGNAL field
     """
     if link is None:
         link = LinkSettings(modulationType=modulation)
@@ -83,20 +88,32 @@ def receive(
     n = np.arange(len(rx_signal))
     corrected = rx_signal * np.exp(-1j * 2 * np.pi * sync.cfo_hz * n / Fs)
 
-    # 3. Strip preamble and extract data portion
-    data_start  = sync.packet_start + PREAMBLE_LEN
+    # 3. Strip preamble and decode the SIGNAL field (RATE + LENGTH, always BPSK R=1/2)
+    signal_start = sync.packet_start + PREAMBLE_LEN
+    signal_field = corrected[signal_start : signal_start + SIGNAL_LEN]
+    sig_modulation, sig_coding_rate, psdu_length_octets = decode_signal_header(
+        link, signal_field, sync.H
+    )
+    if (sig_modulation, sig_coding_rate) != (modulation, coding_rate):
+        raise ValueError(
+            f"SIGNAL field mismatch: decoded ({sig_modulation}, {sig_coding_rate}) "
+            f"!= expected ({modulation}, {coding_rate})"
+        )
+
+    # 4. Strip SIGNAL field, leaving the DATA field
+    data_start  = signal_start + SIGNAL_LEN
     data_signal = corrected[data_start:]
 
-    # 4. OFDM demodulate: CP removal + FFT + pilot extraction
+    # 5. OFDM demodulate: CP removal + FFT + pilot extraction
     ofdm_result = OFDMModule(link).demodulate(data_signal)
 
-    # 5. Per-subcarrier equalization using LTF-derived H
+    # 6. Per-subcarrier equalization using LTF-derived H
     equalized = _equalize_with_ltf(ofdm_result.freqBins, sync.H, link)
 
-    # 6. Hard-decision constellation de-mapping → bits
+    # 7. Hard-decision constellation de-mapping → bits
     detected_bits = map_constellation_to_bits(list(equalized), modulation, n_bpsc)
 
-    # 7. De-interleave per OFDM symbol block
+    # 8. De-interleave per OFDM symbol block
     num_symbols   = len(detected_bits) // n_cbps
     deinterleaved = np.empty(num_symbols * n_cbps, dtype=int)
     for i in range(num_symbols):
@@ -105,7 +122,10 @@ def receive(
             np.array(block), n_cbps, n_bpsc
         )
 
-    # 8. FEC RX: depuncture → Viterbi → descramble
+    # 9. FEC RX: depuncture → Viterbi → descramble
     rx_bits = perform_FEC_RX(deinterleaved, coding_rate, scrambler_seed)
 
-    return np.array(rx_bits, dtype=int), sync, equalized
+    # 10. Trim tail-padding using the PSDU length carried in the SIGNAL field
+    rx_bits = np.array(rx_bits, dtype=int)[: psdu_length_octets * 8]
+
+    return rx_bits, sync, equalized

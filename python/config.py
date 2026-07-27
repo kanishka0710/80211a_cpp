@@ -1,3 +1,4 @@
+from ast import Module
 from dataclasses import dataclass, field
 
 
@@ -13,6 +14,28 @@ class CodingRates:
     R12 = "R12"
     R23 = "R23"
     R34 = "R34"
+
+rateMap = {
+    1 : (ModulationTypes.BPSK, CodingRates.R12),
+    2 : (ModulationTypes.BPSK, CodingRates.R34),
+    3 : (ModulationTypes.QPSK, CodingRates.R12),
+    4 : (ModulationTypes.QPSK, CodingRates.R34),
+    5 : (ModulationTypes.QAM16, CodingRates.R12),
+    6 : (ModulationTypes.QAM16, CodingRates.R34),
+    7 : (ModulationTypes.QAM64, CodingRates.R23),
+    8 : (ModulationTypes.QAM64, CodingRates.R34),
+}
+
+rateMapInverse = {
+    (ModulationTypes.BPSK, CodingRates.R12): 1,
+    (ModulationTypes.BPSK, CodingRates.R34): 2,
+    (ModulationTypes.QPSK, CodingRates.R12): 3,
+    (ModulationTypes.QPSK, CodingRates.R34): 4,
+    (ModulationTypes.QAM16, CodingRates.R12): 5,
+    (ModulationTypes.QAM16, CodingRates.R34): 6,
+    (ModulationTypes.QAM64, CodingRates.R23): 7,
+    (ModulationTypes.QAM64, CodingRates.R34): 8,
+}
 
 
 @dataclass

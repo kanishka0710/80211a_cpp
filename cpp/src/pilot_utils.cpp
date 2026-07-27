@@ -12,7 +12,7 @@ namespace wifi80211a {
         const int out_bit  = (state_ >> 6) & 1;
         const int feedback = out_bit ^ ((state_ >> 3) & 1);
         state_ = static_cast<uint8_t>(((state_ << 1) | feedback) & 0x7F);
-        return out_bit ? -1.0 : +1.0; // BPSK: 0 → +1, 1 → −1
+        return feedback ? -1.0 : +1.0; // BPSK: 0 → +1, 1 → −1
     }
 
     void PilotLFSR::reset()

@@ -13,4 +13,6 @@ namespace wifi80211a
 
     complexVector fft(const complexVector& time_domain, int nFFT);
     complexVector inverse_fft(const complexVector& freq_domain, int nFFT);
+
+    std::vector<int> int_to_bits(const uint64_t n, int numBits = -1);
 }

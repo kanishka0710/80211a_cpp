@@ -24,14 +24,21 @@ namespace wifi80211a
         const std::vector<int> pilot_positions = link_settings.getPilotPositions();
         const std::set<int> pilot_set(pilot_positions.begin(), pilot_positions.end());
 
-        std::vector<fftw_complex> in(nFFT), out(nFFT);
+        // fftw_complex is a raw double[2] array type, which recent libc++ versions
+        // reject as a std::vector element type. C++11 guarantees std::complex<double>
+        // has the same layout as double[2], so we operate on complexVector directly
+        // and reinterpret_cast when handing buffers to FFTW.
+        complexVector in(nFFT), out(nFFT);
         complexVector output_ofdm_waveform;
-        fftw_plan plan = fftw_plan_dft_1d(nFFT, in.data(), out.data(), FFTW_BACKWARD, FFTW_ESTIMATE);
+        fftw_plan plan = fftw_plan_dft_1d(nFFT,
+            reinterpret_cast<fftw_complex*>(in.data()),
+            reinterpret_cast<fftw_complex*>(out.data()),
+            FFTW_BACKWARD, FFTW_ESTIMATE);
 
         for (int i = 0; i < num_ofdm_blocks; i++)
         {
             const int block_start = i * K;
-            memset(in.data(), 0, nFFT * sizeof(fftw_complex));
+            std::fill(in.begin(), in.end(), std::complex<double>(0.0, 0.0));
 
             // Insert pilots: one PRBS bit per symbol, weighted by per-subcarrier polarity
             const double prbs = pilot_lfsr.next_polarity();
@@ -39,8 +46,7 @@ namespace wifi80211a
             {
                 int k = pilot_positions[p];
                 int fft_bin = fft_bin_from_subcarrier(k, nFFT);
-                in[fft_bin][0] = prbs * PilotLFSR::POLARITY[p];
-                in[fft_bin][1] = 0.0;
+                in[fft_bin] = std::complex<double>(prbs * PilotLFSR::POLARITY[p], 0.0);
             }
 
             // Insert data subcarriers in order from −26 to +26, skipping DC and pilots
@@ -54,8 +60,7 @@ namespace wifi80211a
                 int src = block_start + data_idx;
                 if (src < static_cast<int>(data.size()))
                 {
-                    in[fft_bin][0] = data[src].real();
-                    in[fft_bin][1] = data[src].imag();
+                    in[fft_bin] = data[src];
                 }
                 data_idx++;
             }
@@ -63,19 +68,18 @@ namespace wifi80211a
             fftw_execute(plan);
             for (int j = 0; j < nFFT; j++)
             {
-                out[j][0] /= nFFT;
-                out[j][1] /= nFFT;
+                out[j] /= static_cast<double>(nFFT);
             }
 
             // Cyclic prefix
             for (int j = nFFT - cp_len; j < nFFT; j++)
             {
-                output_ofdm_waveform.emplace_back(out[j][0], out[j][1]);
+                output_ofdm_waveform.push_back(out[j]);
             }
             // IFFT output
             for (int j = 0; j < nFFT; j++)
             {
-                output_ofdm_waveform.emplace_back(out[j][0], out[j][1]);
+                output_ofdm_waveform.push_back(out[j]);
             }
         }
 
@@ -94,12 +98,19 @@ namespace wifi80211a
 
         const std::vector<int> pilot_positions = linkSettings.getPilotPositions();
 
-        std::vector<fftw_complex> in(nFFT), out(nFFT);
+        // fftw_complex is a raw double[2] array type, which recent libc++ versions
+        // reject as a std::vector element type. C++11 guarantees std::complex<double>
+        // has the same layout as double[2], so we operate on complexVector directly
+        // and reinterpret_cast when handing buffers to FFTW.
+        complexVector in(nFFT), out(nFFT);
         OFDMDemodResult result;
         result.freq_bins.reserve(static_cast<std::size_t>(num_ofdm_blocks) * static_cast<std::size_t>(nFFT));
         result.pilots.reserve(static_cast<std::size_t>(num_ofdm_blocks) * 4u);
 
-        fftw_plan plan = fftw_plan_dft_1d(nFFT, in.data(), out.data(), FFTW_FORWARD, FFTW_ESTIMATE);
+        fftw_plan plan = fftw_plan_dft_1d(nFFT,
+            reinterpret_cast<fftw_complex*>(in.data()),
+            reinterpret_cast<fftw_complex*>(out.data()),
+            FFTW_FORWARD, FFTW_ESTIMATE);
 
         for (int i = 0; i < num_ofdm_blocks; i++)
         {
@@ -108,18 +119,17 @@ namespace wifi80211a
             for (int k = 0; k < nFFT; k++)
             {
                 const int idx = body_start + k;
-                in[k][0] = data[idx].real();
-                in[k][1] = data[idx].imag();
+                in[k] = data[idx];
             }
             fftw_execute(plan);
             for (int j = 0; j < nFFT; j++)
             {
-                result.freq_bins.emplace_back(out[j][0], out[j][1]);
+                result.freq_bins.push_back(out[j]);
             }
             for (int p = 0; p < 4; ++p)
             {
                 const int b = fft_bin_from_subcarrier(pilot_positions[static_cast<std::size_t>(p)], nFFT);
-                result.pilots.emplace_back(out[b][0], out[b][1]);
+                result.pilots.push_back(out[b]);
             }
         }
         fftw_destroy_plan(plan);

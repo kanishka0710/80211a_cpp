@@ -17,46 +17,63 @@ namespace wifi80211a
         return std::abs(a - b) < epsilon;
     }
 
+    // fftw_complex is a raw double[2] array type, which recent libc++ versions
+    // reject as a std::vector element type. C++11 guarantees std::complex<double>
+    // has the same layout as double[2], so we operate on complexVector directly
+    // and reinterpret_cast when handing buffers to FFTW.
     complexVector inverse_fft(const complexVector& freq_domain, const int nFFT)
     {
-        std::vector<fftw_complex> in(nFFT), out(nFFT);
-        for (int i = 0; i < nFFT; ++i)
-        {
-            in[i][0] = freq_domain[i].real();
-            in[i][1] = freq_domain[i].imag();
-        }
+        complexVector in(freq_domain.begin(), freq_domain.begin() + nFFT);
+        complexVector out(nFFT);
 
-        fftw_plan plan = fftw_plan_dft_1d(nFFT, in.data(), out.data(), FFTW_BACKWARD, FFTW_ESTIMATE);
+        fftw_plan plan = fftw_plan_dft_1d(nFFT,
+            reinterpret_cast<fftw_complex*>(in.data()),
+            reinterpret_cast<fftw_complex*>(out.data()),
+            FFTW_BACKWARD, FFTW_ESTIMATE);
         fftw_execute(plan);
         fftw_destroy_plan(plan);
 
-        complexVector time_domain(nFFT);
-        for (int i = 0; i < nFFT; ++i)
+        for (auto& sample : out)
         {
-            time_domain[i] = std::complex<double>(out[i][0], out[i][1]) / static_cast<double>(nFFT);
+            sample /= static_cast<double>(nFFT);
         }
-        return time_domain;
+        return out;
     }
 
     complexVector fft(const complexVector& time_domain, const int nFFT)
     {
-        std::vector<fftw_complex> in(nFFT), out(nFFT);
-        for (int i = 0; i < nFFT; ++i)
-        {
-            in[i][0] = time_domain[i].real();
-            in[i][1] = time_domain[i].imag();
-        }
+        complexVector in(time_domain.begin(), time_domain.begin() + nFFT);
+        complexVector out(nFFT);
 
-        fftw_plan plan = fftw_plan_dft_1d(nFFT, in.data(), out.data(), FFTW_FORWARD, FFTW_ESTIMATE);
+        fftw_plan plan = fftw_plan_dft_1d(nFFT,
+            reinterpret_cast<fftw_complex*>(in.data()),
+            reinterpret_cast<fftw_complex*>(out.data()),
+            FFTW_FORWARD, FFTW_ESTIMATE);
         fftw_execute(plan);
         fftw_destroy_plan(plan);
 
-        complexVector freq_domain(nFFT);
-        for (int i = 0; i < nFFT; ++i)
-        {
-            freq_domain[i] = std::complex<double>(out[i][0], out[i][1]);
+        return out;
+    }
+
+
+    // LSB-first bit vector (bit 0 = LSB), matching 802.11a transmit order.
+    // If numBits < 0 (or omitted), compute the minimal number of bits needed for n.
+    std::vector<int> int_to_bits(const uint64_t n, int numBits) {
+        if (numBits < 0) {
+            // Minimal bit-width: number of bits needed to represent n (n=0 -> 1 bit, matching Python's bin(0) = "0b0")
+            int width = 1;
+            uint64_t temp = n;
+            while (temp >>= 1) {
+                width++;
+            }
+            numBits = width;
         }
-        return freq_domain;
+
+        std::vector<int> bits(numBits);
+        for (int i = 0; i < numBits; ++i) {
+            bits[i] = (n >> i) & 1;
+        }
+        return bits;
     }
 
 }

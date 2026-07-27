@@ -7,6 +7,7 @@ from interleaver_module import interleave
 from modulation_module import map_bits_to_constellation
 from ofdm_module import OFDMModule
 from preamble_module import PreambleModule
+from signal_module import create_signal_header
 
 
 def generate_tx_signal(
@@ -26,7 +27,7 @@ def generate_tx_signal(
     link            — optional LinkSettings; created from modulation if None
 
     Returns (tx_signal, link) where tx_signal is:
-        [preamble (320 samples)] + [OFDM data symbols]
+        [preamble (320 samples)] + [SIGNAL field (80 samples)] + [OFDM data symbols]
     """
     if link is None:
         link = LinkSettings(modulationType=modulation)
@@ -60,5 +61,8 @@ def generate_tx_signal(
     # 5. Prepend preamble (STF + LTF = 320 samples)
     preamble = PreambleModule(link).generate_preamble()
 
-    tx_signal = np.concatenate([preamble, ofdm_sig])
+    # 6. Prepend signal header (RATE + LENGTH for the DATA field that follows)
+    signal_header = create_signal_header(link, coding_rate, len(bits) // 8)
+
+    tx_signal = np.concatenate([preamble, signal_header, ofdm_sig])
     return tx_signal, link
