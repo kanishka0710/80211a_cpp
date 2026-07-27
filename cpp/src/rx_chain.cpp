@@ -6,12 +6,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 #include "phy/equalizer_module.h"
 #include "phy/fec_module.h"
 #include "phy/interleaver_module.h"
 #include "phy/modulation_module.h"
 #include "phy/ofdm_module.h"
+#include "phy/signal_module.h"
 
 namespace wifi80211a
 {
@@ -45,25 +47,47 @@ namespace wifi80211a
         // 2. Apply combined CFO correction to the full signal
         const complexVector corrected = apply_cfo_correction(rx_signal, sync.cfo_hz, Fs);
 
-        // 3. Strip preamble and extract the data portion
-        const int data_start = sync.packet_start + kPreambleLength;
+        // 3. Strip preamble and decode the SIGNAL field (RATE + LENGTH, always BPSK R=1/2)
+        const int signal_start = sync.packet_start + kPreambleLength;
+        complexVector signal_field;
+        if (signal_start >= 0 && signal_start + kSignalLength <= static_cast<int>(corrected.size()))
+        {
+            signal_field.assign(corrected.begin() + signal_start, corrected.begin() + signal_start + kSignalLength);
+        }
+
+        // decode_signal_header takes non-const refs for LinkSettings/H even though
+        // this call site treats them as inputs; scratch copies keep link_settings
+        // (the caller's expected rate) and sync.H untouched.
+        LinkSettings signal_link_settings = link_settings;
+        complexVector signal_H = sync.H;
+        const SignalOutput signal = decode_signal_header(signal_link_settings, signal_field, signal_H);
+
+        if (signal.modulationType != link_settings.getModulationType() ||
+            signal.codingRate != link_settings.getCodingRate())
+        {
+            throw std::invalid_argument(
+                "SIGNAL field mismatch: decoded rate/modulation does not match caller-supplied link_settings");
+        }
+
+        // 4. Strip SIGNAL field, leaving the DATA field
+        const int data_start = signal_start + kSignalLength;
         complexVector data_signal;
         if (data_start >= 0 && data_start < static_cast<int>(corrected.size()))
         {
             data_signal.assign(corrected.begin() + data_start, corrected.end());
         }
 
-        // 4. OFDM demodulate: CP removal + FFT + pilot extraction
+        // 5. OFDM demodulate: CP removal + FFT + pilot extraction
         const OFDMDemodResult ofdm_result = demodulate(link_settings, data_signal);
 
-        // 5. Per-subcarrier equalization using the LTF-derived channel estimate
+        // 6. Per-subcarrier equalization using the LTF-derived channel estimate
         const complexVector equalized = equalize_with_ltf(ofdm_result.freq_bins, sync.H, link_settings);
 
-        // 6. Hard-decision constellation de-mapping -> bits
+        // 7. Hard-decision constellation de-mapping -> bits
         const std::vector<int> detected_bits = map_constellation_to_bits(
             equalized, link_settings.getModulationType(), n_bpsc);
 
-        // 7. De-interleave per OFDM symbol block
+        // 8. De-interleave per OFDM symbol block
         const int num_symbols = static_cast<int>(detected_bits.size()) / n_cbps;
         std::vector<int> deinterleaved_bits(static_cast<std::size_t>(num_symbols) * n_cbps);
         for (int i = 0; i < num_symbols; i++)
@@ -75,8 +99,15 @@ namespace wifi80211a
                       deinterleaved_bits.begin() + i * n_cbps);
         }
 
-        // 8. FEC RX: depuncture -> Viterbi -> descramble
-        std::vector<int> rx_bits = performFECRX(deinterleaved_bits, link_settings.getCodingRate(), scrambler_seed);
+        // 9. FEC RX: depuncture -> Viterbi -> descramble -> strip the 16-bit SERVICE field
+        std::vector<int> rx_bits = performFECDataFieldRX(deinterleaved_bits, link_settings.getCodingRate(), scrambler_seed);
+
+        // 10. Trim tail/pad using the PSDU length carried in the SIGNAL field
+        const std::size_t psdu_bits = static_cast<std::size_t>(signal.psduLengthOctets) * 8;
+        if (psdu_bits < rx_bits.size())
+        {
+            rx_bits.resize(psdu_bits);
+        }
 
         return RxResult{std::move(rx_bits), sync, equalized};
     }

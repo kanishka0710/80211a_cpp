@@ -37,6 +37,24 @@ rateMapInverse = {
     (ModulationTypes.QAM64, CodingRates.R34): 8,
 }
 
+# IEEE 802.11a-1999 17.3.4.1 (Table 78): the SIGNAL field's 4-bit RATE
+# codeword for each rate is a fixed, non-sequential code -- NOT a binary
+# index of rateMap's keys. Packed LSB-first (bit0=R1 ... bit3=R4) to match
+# int_to_bits()/decode_signal_header()'s bit order. E.g. 36 Mb/s (16-QAM,
+# R=3/4) transmits R1..R4 = 1,0,1,1 per Annex G Table G.7.
+rateCodeword = {
+    1: 0b1011,  # 6 Mb/s:  R1..R4 = 1,1,0,1
+    2: 0b1111,  # 9 Mb/s:  R1..R4 = 1,1,1,1
+    3: 0b1010,  # 12 Mb/s: R1..R4 = 0,1,0,1
+    4: 0b1110,  # 18 Mb/s: R1..R4 = 0,1,1,1
+    5: 0b1001,  # 24 Mb/s: R1..R4 = 1,0,0,1
+    6: 0b1101,  # 36 Mb/s: R1..R4 = 1,0,1,1
+    7: 0b1000,  # 48 Mb/s: R1..R4 = 0,0,0,1
+    8: 0b1100,  # 54 Mb/s: R1..R4 = 0,0,1,1
+}
+
+rateCodewordToValue = {codeword: value for value, codeword in rateCodeword.items()}
+
 
 @dataclass
 class LinkSettings:

@@ -155,6 +155,9 @@ target_link_libraries(test_pilot_utils PRIVATE wifi_phy GTest::gtest_main)
 add_executable(test_modulation tests/test_modulation.cpp)
 target_link_libraries(test_modulation PRIVATE wifi_phy GTest::gtest_main)
 
+add_executable(test_signal tests/test_signal.cpp)
+target_link_libraries(test_signal PRIVATE wifi_phy GTest::gtest_main)
+
 add_executable(loopback_test
     tests/loopback_test.cpp
         include/phy/tx_chain.h
@@ -180,6 +183,7 @@ gtest_discover_tests(test_preamble)
 gtest_discover_tests(test_interleaver)
 gtest_discover_tests(test_pilot_utils)
 gtest_discover_tests(test_modulation)
+gtest_discover_tests(test_signal)
 
 target_link_libraries(wifi_phy PRIVATE FFTW3::fftw3 Eigen3::Eigen)
 

@@ -20,14 +20,16 @@ namespace wifi80211a
     /// scrambler_seed — 7-bit non-zero seed for the data scrambler
     ///
     /// Returns the TX signal:
-    ///     [preamble (320 samples)] + [OFDM data symbols]
+    ///     [preamble (320 samples)] + [SIGNAL field (80 samples)] + [OFDM data symbols]
     ///
     /// Pipeline:
-    ///     FEC (scramble -> convolutional encode -> puncture)
+    ///     FEC (build DATA field: SERVICE + PSDU + TAIL + PAD, scramble ->
+    ///          convolutional encode -> puncture)
     ///     -> interleave (per OFDM symbol)
     ///     -> constellation mapping
     ///     -> OFDM modulate (pilots + IFFT + cyclic prefix)
     ///     -> prepend preamble (STF + LTF)
+    ///     -> insert SIGNAL field (RATE + LENGTH for the DATA field that follows)
     complexVector generate_tx_signal(
         const std::vector<int>& bits,
         const LinkSettings& link_settings,

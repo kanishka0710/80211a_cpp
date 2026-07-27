@@ -2,7 +2,7 @@ import numpy as np
 from math import ceil
 
 from config import LinkSettings, ModulationTypes, CodingRates
-from fec_module import perform_FEC
+from fec_module import perform_FEC_data_field, compute_ndbps
 from interleaver_module import interleave
 from modulation_module import map_bits_to_constellation
 from ofdm_module import OFDMModule
@@ -36,12 +36,14 @@ def generate_tx_signal(
     n_bpsc    = link.bitPerSubcarrier[modulation]
     n_cbps    = n_bpsc * n_data_sc
 
-    # 1. FEC: scramble → convolutional encode → puncture
-    fec_bits = np.array(perform_FEC(bits, coding_rate, scrambler_seed), dtype=int)
-
-    # Pad to integer multiple of N_CBPS
-    pad_len  = (-len(fec_bits)) % n_cbps
-    fec_bits = np.append(fec_bits, np.zeros(pad_len, dtype=int))
+    # 1. FEC: build the DATA field (SERVICE + PSDU + TAIL + PAD, 17.3.5),
+    #    scramble → convolutional encode → puncture. N_PAD is solved so the
+    #    coded output lands on an exact multiple of N_CBPS, so no separate
+    #    padding step is needed afterward.
+    n_dbps   = compute_ndbps(n_cbps, coding_rate)
+    fec_bits = np.array(
+        perform_FEC_data_field(bits, coding_rate, scrambler_seed, n_dbps), dtype=int
+    )
 
     num_ofdm_symbols = len(fec_bits) // n_cbps
 

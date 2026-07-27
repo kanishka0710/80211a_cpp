@@ -5,7 +5,7 @@ from sync_module import SyncModule, SyncResult
 from ofdm_module import OFDMModule
 from modulation_module import map_constellation_to_bits
 from interleaver_module import deinterleave
-from fec_module import perform_FEC_RX
+from fec_module import perform_FEC_data_field_RX
 from signal_module import decode_signal_header
 from utils import fft_bin_from_subcarrier
 
@@ -70,7 +70,7 @@ def receive(
         → LTF-based per-subcarrier equalization
         → constellation de-map (hard decision)
         → de-interleave
-        → FEC RX (depuncture → Viterbi → descramble)
+        → FEC RX (depuncture → Viterbi → descramble → strip SERVICE field)
         → trim to the PSDU length carried in the SIGNAL field
     """
     if link is None:
@@ -122,10 +122,10 @@ def receive(
             np.array(block), n_cbps, n_bpsc
         )
 
-    # 9. FEC RX: depuncture → Viterbi → descramble
-    rx_bits = perform_FEC_RX(deinterleaved, coding_rate, scrambler_seed)
+    # 9. FEC RX: depuncture → Viterbi → descramble → strip the 16-bit SERVICE field
+    rx_bits = perform_FEC_data_field_RX(deinterleaved, coding_rate, scrambler_seed)
 
-    # 10. Trim tail-padding using the PSDU length carried in the SIGNAL field
+    # 10. Trim tail/pad using the PSDU length carried in the SIGNAL field
     rx_bits = np.array(rx_bits, dtype=int)[: psdu_length_octets * 8]
 
     return rx_bits, sync, equalized

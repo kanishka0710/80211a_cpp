@@ -64,6 +64,62 @@ namespace wifi80211a
         return scramble_(decoded, scrambler_seed_7bit);
     }
 
+    int compute_ndbps(const int n_cbps, const CodingRates coding_rate)
+    {
+        switch (coding_rate) {
+            case CodingRates::R12: return n_cbps / 2;
+            case CodingRates::R23: return n_cbps * 2 / 3;
+            case CodingRates::R34: return n_cbps * 3 / 4;
+        }
+        throw std::invalid_argument("compute_ndbps: unhandled CodingRates value");
+    }
+
+    std::pair<int, int> compute_data_field_sizing(const int psdu_len_bits, const int n_dbps)
+    {
+        const int n_msg_tail = kServiceBits + psdu_len_bits + kDataTailBits;
+        const int n_sym = (n_msg_tail + n_dbps - 1) / n_dbps;
+        const int n_data = n_sym * n_dbps;
+        const int n_pad = n_data - n_msg_tail;
+        return {n_sym, n_pad};
+    }
+
+    std::vector<int> performFECDataField(
+        std::vector<int> psdu_bits,
+        const CodingRates coding_rate,
+        const std::uint8_t scrambler_seed_7bit,
+        const int n_dbps)
+    {
+        const auto [n_sym, n_pad] = compute_data_field_sizing(static_cast<int>(psdu_bits.size()), n_dbps);
+        (void)n_sym;
+
+        std::vector<int> unscrambled;
+        unscrambled.reserve(kServiceBits + psdu_bits.size() + kDataTailBits + n_pad);
+        unscrambled.insert(unscrambled.end(), kServiceBits, 0);
+        unscrambled.insert(unscrambled.end(), psdu_bits.begin(), psdu_bits.end());
+        unscrambled.insert(unscrambled.end(), kDataTailBits + n_pad, 0);
+
+        std::vector<int> scrambled_bits = scramble_(unscrambled, scrambler_seed_7bit);
+
+        const std::size_t tail_start = static_cast<std::size_t>(kServiceBits) + psdu_bits.size();
+        for (int i = 0; i < kDataTailBits; ++i) {
+            scrambled_bits[tail_start + i] = 0;
+        }
+
+        std::vector<int> mother_bits = convolutional_encoder_mother_(scrambled_bits);
+        return puncture_(mother_bits, coding_rate);
+    }
+
+    std::vector<int> performFECDataFieldRX(
+        std::vector<int>& bits,
+        const CodingRates coding_rate,
+        const std::uint8_t scrambler_seed_7bit)
+    {
+        auto [depunctured, mask_bits] = depuncture_(bits, coding_rate);
+        auto decoded = viterbi_decode_(depunctured, mask_bits);
+        auto descrambled = scramble_(decoded, scrambler_seed_7bit);
+        return std::vector<int>(descrambled.begin() + kServiceBits, descrambled.end());
+    }
+
 
     std::vector<int> data_scrambler_prbs(const std::size_t n, const std::uint8_t seed_7bit)
     {
@@ -222,7 +278,15 @@ namespace wifi80211a
             pathMetrics = newMetric;
         }
 
+        // Traceback from whichever state has the lowest final path metric,
+        // rather than assuming the trellis is known to terminate at state 0.
+        // This is correct both when the tail truly is the last bit (e.g.
+        // the SIGNAL field) and when scrambled PAD bits follow the tail
+        // (17.3.5.4), which leaves the true final state unknown/non-zero.
         int state = 0;
+        for (int s = 1; s < num_states; s++) {
+            if (pathMetrics[s] < pathMetrics[state]) state = s;
+        }
         std::vector<int> decoded_bits(T);
         for (int t = T-1; t >= 0; t--) {
             int prevState = pathHistory[t][state];

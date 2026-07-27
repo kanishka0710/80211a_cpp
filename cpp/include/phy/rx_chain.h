@@ -17,6 +17,9 @@ namespace wifi80211a
     /// 160-sample STF + 160-sample LTF.
     constexpr int kPreambleLength = 320;
 
+    /// 64-sample FFT + 16-sample CP (1 OFDM symbol: RATE + LENGTH).
+    constexpr int kSignalLength = 80;
+
     struct RxResult
     {
         std::vector<int> bits;
@@ -34,11 +37,14 @@ namespace wifi80211a
     ///     sync (timing + CFO + channel estimate)
     ///     -> CFO correction
     ///     -> strip preamble
+    ///     -> decode SIGNAL field (RATE + LENGTH) -> verify against caller-supplied link_settings
+    ///     -> strip SIGNAL field
     ///     -> OFDM demodulate (CP strip + FFT)
     ///     -> LTF-based per-subcarrier equalization
     ///     -> constellation de-map (hard decision)
     ///     -> de-interleave
-    ///     -> FEC RX (depuncture -> Viterbi -> descramble)
+    ///     -> FEC RX (depuncture -> Viterbi -> descramble -> strip SERVICE field)
+    ///     -> trim to the PSDU length carried in the SIGNAL field
     RxResult receive(
         const complexVector& rx_signal,
         const LinkSettings& link_settings,

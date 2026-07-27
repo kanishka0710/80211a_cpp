@@ -161,3 +161,64 @@ TEST(ForwardErrorCorrection, DataFirstSymbolPunctureR34MatchesAnnexG)
     const auto got = wifi80211a::puncture_(mother, wifi80211a::CodingRates::R34);
     EXPECT_EQ(got, bits_from_sv(kDataSymbol1Coded));
 }
+
+// ── SERVICE / PAD (17.3.5.1, 17.3.5.4) ────────────────────────────────────────
+
+/// Table 78: N_DBPS = N_CBPS * R for all eight standard rates.
+TEST(ForwardErrorCorrection, ComputeNdbps)
+{
+    EXPECT_EQ(wifi80211a::compute_ndbps(48, wifi80211a::CodingRates::R12), 24);   // BPSK
+    EXPECT_EQ(wifi80211a::compute_ndbps(48, wifi80211a::CodingRates::R34), 36);
+    EXPECT_EQ(wifi80211a::compute_ndbps(96, wifi80211a::CodingRates::R12), 48);   // QPSK
+    EXPECT_EQ(wifi80211a::compute_ndbps(96, wifi80211a::CodingRates::R34), 72);
+    EXPECT_EQ(wifi80211a::compute_ndbps(192, wifi80211a::CodingRates::R12), 96);  // 16-QAM
+    EXPECT_EQ(wifi80211a::compute_ndbps(192, wifi80211a::CodingRates::R34), 144);
+    EXPECT_EQ(wifi80211a::compute_ndbps(288, wifi80211a::CodingRates::R23), 192); // 64-QAM
+    EXPECT_EQ(wifi80211a::compute_ndbps(288, wifi80211a::CodingRates::R34), 216);
+}
+
+/// G.5.1: a 100-octet (800-bit) PSDU at 36 Mb/s (16-QAM, R=3/4, N_DBPS=144)
+/// needs N_SYM=6 OFDM symbols and N_PAD=42 pad bits.
+TEST(ForwardErrorCorrection, DataFieldSizingMatchesAnnexG)
+{
+    const auto [n_sym, n_pad] = wifi80211a::compute_data_field_sizing(800, 144);
+    EXPECT_EQ(n_sym, 6);
+    EXPECT_EQ(n_pad, 42);
+}
+
+/// performFECDataField's output length must land exactly on N_SYM * N_CBPS
+/// symbol boundaries (N_PAD is solved for this), even for a PSDU length
+/// that isn't itself symbol-aligned.
+TEST(ForwardErrorCorrection, DataFieldOutputLengthIsWholeSymbols)
+{
+    constexpr int kPsduBits = 8 * 37; // arbitrary, not symbol-aligned
+    constexpr int kNCbps = 192;       // 16-QAM
+    constexpr int kNDbps = 144;       // R = 3/4
+    const auto got = wifi80211a::performFECDataField(
+        std::vector<int>(kPsduBits, 0), wifi80211a::CodingRates::R34, 0x5D, kNDbps);
+    EXPECT_EQ(got.size() % kNCbps, 0u);
+
+    const auto [n_sym, n_pad] = wifi80211a::compute_data_field_sizing(kPsduBits, kNDbps);
+    (void)n_pad;
+    EXPECT_EQ(got.size(), static_cast<std::size_t>(n_sym) * kNCbps);
+}
+
+/// End-to-end, no channel: performFECDataField -> performFECDataFieldRX must
+/// recover the original PSDU bits exactly once the 16 leading SERVICE bits
+/// are stripped (done internally) and the true PSDU length is known (as it
+/// would be from the SIGNAL field's LENGTH in the real RX pipeline).
+TEST(ForwardErrorCorrection, DataFieldRoundTrip)
+{
+    const std::vector<int> psdu = bits_from_sv("1011001110100001");
+    constexpr int kNDbps = 24; // BPSK, R=1/2
+    const auto encoded = wifi80211a::performFECDataField(
+        psdu, wifi80211a::CodingRates::R12, 0x5D, kNDbps);
+
+    std::vector<int> encoded_copy = encoded;
+    const auto decoded = wifi80211a::performFECDataFieldRX(
+        encoded_copy, wifi80211a::CodingRates::R12, 0x5D);
+
+    ASSERT_GE(decoded.size(), psdu.size());
+    const std::vector<int> recovered_psdu(decoded.begin(), decoded.begin() + psdu.size());
+    EXPECT_EQ(recovered_psdu, psdu);
+}

@@ -1,6 +1,11 @@
+from math import ceil
+
 import numpy as np
 
 from config import CodingRates
+
+SERVICE_BITS = 16   # 17.3.5.1: 7 scrambler-sync zeros + 9 reserved zeros
+DATA_TAIL_BITS = 6  # 17.3.5.2
 
 
 def LFSRStep(regs):
@@ -88,6 +93,53 @@ def perform_FEC(dataBits, codingRate, scramblerSeed7bit):
     return puncture(mother_bits, codingRate)
 
 
+def compute_ndbps(n_cbps, codingRate):
+    """N_DBPS = N_CBPS * R -- data bits carried per OFDM symbol (Table 78)."""
+    if codingRate == CodingRates.R12:
+        return n_cbps // 2
+    if codingRate == CodingRates.R23:
+        return n_cbps * 2 // 3
+    if codingRate == CodingRates.R34:
+        return n_cbps * 3 // 4
+    raise ValueError(f"Unknown coding rate: {codingRate}")
+
+
+def compute_data_field_sizing(psduLenBits, nDbps):
+    """N_SYM / N_PAD per 17.3.5.4, Eq. (11)-(13), for a SERVICE(16) + PSDU +
+    TAIL(6) message of the given PSDU length."""
+    n_msg_tail = SERVICE_BITS + psduLenBits + DATA_TAIL_BITS
+    n_sym = ceil(n_msg_tail / nDbps)
+    n_data = n_sym * nDbps
+    n_pad = n_data - n_msg_tail
+    return n_sym, n_pad
+
+
+def perform_FEC_data_field(psduBits, codingRate, scramblerSeed7bit, nDbps):
+    """Builds and encodes the PLCP DATA field per 17.3.5.
+
+    Bit order is SERVICE(16 zeros) + PSDU + TAIL(6 zeros) + PAD(zeros), all
+    scrambled together as one block (17.3.5.4); the 6 TAIL bits are then
+    overwritten with unscrambled zeros (17.3.5.2) before rate-1/2
+    convolutional encoding and puncturing to `codingRate`.
+    """
+    psduBits = np.asarray(psduBits, dtype=int)
+    _, n_pad = compute_data_field_sizing(len(psduBits), nDbps)
+
+    unscrambled = np.concatenate([
+        np.zeros(SERVICE_BITS, dtype=int),
+        psduBits,
+        np.zeros(DATA_TAIL_BITS + n_pad, dtype=int),
+    ])
+
+    scrambledBits = scramble(unscrambled, scramblerSeed7bit)
+
+    tail_start = SERVICE_BITS + len(psduBits)
+    scrambledBits[tail_start:tail_start + DATA_TAIL_BITS] = 0
+
+    mother_bits = convolutional_encoder_mother(scrambledBits)
+    return puncture(mother_bits, codingRate)
+
+
 def depuncture(bits, codingRate):
     if codingRate == CodingRates.R12:
         return bits, np.ones(len(bits), dtype=int)
@@ -161,7 +213,7 @@ def viterbi_decode(bits, bitsMask):
                     pathHistory[t, ns] = s
         pathMetrics = newMetric
 
-    state = 0
+    state = int(np.argmin(pathMetrics))
     decoded_bits = np.zeros(T, dtype=int)
     for t in range(T - 1, -1, -1):
         prevState = pathHistory[t, state]
@@ -176,6 +228,18 @@ def perform_FEC_RX(bits, codingRate, scramblerSeed7bit):
     decoded = viterbi_decode(depunctured, bitsMask)
     # Drop the 6 zero tail bits appended before convolutional encoding.
     return scramble(decoded[:-6], scramblerSeed7bit)
+
+
+def perform_FEC_data_field_RX(bits, codingRate, scramblerSeed7bit):
+    """Inverse of perform_FEC_data_field.
+
+    Returns PSDU + TAIL + PAD bits (i.e. everything after the 16-bit SERVICE
+    field); the caller trims to the PSDU length carried in the SIGNAL field.
+    """
+    depunctured, bitsMask = depuncture(bits, codingRate)
+    decoded = viterbi_decode(depunctured, bitsMask)
+    descrambled = scramble(decoded, scramblerSeed7bit)
+    return descrambled[SERVICE_BITS:]
 
 
 

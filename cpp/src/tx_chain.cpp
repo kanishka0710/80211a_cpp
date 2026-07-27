@@ -12,6 +12,7 @@
 #include "phy/ofdm_module.h"
 #include "phy/pilot_utils.h"
 #include "phy/preamble_module.h"
+#include "phy/signal_module.h"
 
 namespace wifi80211a
 {
@@ -24,12 +25,13 @@ namespace wifi80211a
         const int n_cbps    = link_settings.getNCPBS();
         const int n_bpsc    = n_cbps / n_data_sc;
 
-        // 1. FEC: scramble -> convolutional encode -> puncture
-        std::vector<int> fec_bits = performFEC(bits, link_settings.getCodingRate(), scrambler_seed);
-
-        // Pad to an integer multiple of n_cbps
-        const int pad_len = (n_cbps - static_cast<int>(fec_bits.size()) % n_cbps) % n_cbps;
-        fec_bits.insert(fec_bits.end(), pad_len, 0);
+        // 1. FEC: build the DATA field (SERVICE + PSDU + TAIL + PAD, 17.3.5),
+        // scramble -> convolutional encode -> puncture. N_PAD is solved so
+        // the coded output lands on an exact multiple of n_cbps, so no
+        // separate padding step is needed afterward.
+        const int n_dbps = compute_ndbps(n_cbps, link_settings.getCodingRate());
+        std::vector<int> fec_bits = performFECDataField(
+            bits, link_settings.getCodingRate(), scrambler_seed, n_dbps);
 
         const int num_ofdm_symbols = static_cast<int>(fec_bits.size()) / n_cbps;
 
@@ -54,6 +56,12 @@ namespace wifi80211a
 
         // 5. Prepend preamble (STF + LTF = 320 samples)
         complexVector tx_signal = generate_preamble(link_settings);
+
+        // 6. Insert SIGNAL field (RATE + LENGTH for the DATA field that follows)
+        int psdu_length_octets = static_cast<int>(bits.size()) / 8;
+        const complexVector signal_header = create_signal_header(link_settings, psdu_length_octets);
+        tx_signal.insert(tx_signal.end(), signal_header.begin(), signal_header.end());
+
         tx_signal.insert(tx_signal.end(), ofdm_signal.begin(), ofdm_signal.end());
 
         return tx_signal;

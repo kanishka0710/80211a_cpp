@@ -17,9 +17,8 @@ def create_signal_header(
     regardless of the RATE used for the DATA field that follows it.
     """
     signalBits = []
-    signalBits.extend(int_to_bits(
-        rateMapInverse[linkSettings.modulationType, codingRate],
-        4))
+    rateValue = rateMapInverse[linkSettings.modulationType, codingRate]
+    signalBits.extend(int_to_bits(rateCodeword[rateValue], 4))
     signalBits.append(0)  # reserved
     signalBits.extend(int_to_bits(psduLengthOctets, 12))
     signalBits.append(sum(signalBits[:17]) % 2)  # even parity over bits 0-16
@@ -81,8 +80,8 @@ def decode_signal_header(
     lengthBits = decodedBits[5:17]
     parityBit = decodedBits[17]
 
-    rateValue = sum(int(b) << i for i, b in enumerate(rateBits))
-    modulationType, codingRate = rateMap[rateValue]
+    rateCodewordBits = sum(int(b) << i for i, b in enumerate(rateBits))
+    modulationType, codingRate = rateMap[rateCodewordToValue[rateCodewordBits]]
     psduLengthOctets = sum(int(b) << i for i, b in enumerate(lengthBits))
 
     expectedParity = sum(decodedBits[:17]) % 2
