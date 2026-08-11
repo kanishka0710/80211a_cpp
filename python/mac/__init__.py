@@ -11,7 +11,7 @@ from mac.constants import (
 from mac.frame import MacFrame, pack_data, pack_ack, parse_mpdu
 from mac.phy_sap import PhySap
 from mac.medium import SimMedium, DeliveryMode
-from mac.dcf import DcfStation, DcfState, MinimalDcf
+from mac.dcf import DcfStation, DcfState
 from mac.reorder import ReorderBuffer, PassthroughReorder
 from mac.station import MacStation, addr_from_int
 

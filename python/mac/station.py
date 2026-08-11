@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 
-from mac.dcf import DcfStation, MinimalDcf
+from mac.dcf import DcfStation
 from mac.frame import pack_data, parse_mpdu
 from mac.medium import SimMedium
 from mac.phy_sap import PhySap
@@ -30,7 +30,7 @@ class MacStation:
         medium: SimMedium,
         phy: PhySap | None = None,
         *,
-        dcf_cls: type[DcfStation] = MinimalDcf,
+        dcf_cls: type[DcfStation] = DcfStation,
         reorder_factory: type[ReorderBuffer] = PassthroughReorder,
     ) -> None:
         self.address = address
