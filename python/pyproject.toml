@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "bladerf",
     "ipdb>=0.13.13",
     "ipykernel>=7.2.0",
     "jupyter>=1.1.1",
@@ -13,3 +14,6 @@ dependencies = [
     "pydantic>=2.13.4",
     "scikit-learn>=1.9.0",
 ]
+
+[tool.uv.sources]
+bladerf = { git = "https://github.com/Nuand/bladeRF.git", subdirectory = "host/libraries/libbladeRF_bindings/python" }

@@ -9,15 +9,18 @@ from utils import fft_bin_from_subcarrier, int_to_bits
 
 
 def create_signal_header(
-    linkSettings: LinkSettings, codingRate: str, psduLengthOctets: int
+    linkSettings: LinkSettings, psduLengthOctets: int
 ) -> np.ndarray:
     """Builds and OFDM-modulates the 24-bit SIGNAL field (Sec. 17.3.4).
 
     SIGNAL is always BPSK, R=1/2, and is never scrambled or punctured,
     regardless of the RATE used for the DATA field that follows it.
+
+    RATE is taken from linkSettings.modulationType / linkSettings.codingRate
+    (same as C++ create_signal_header).
     """
     signalBits = []
-    rateValue = rateMapInverse[linkSettings.modulationType, codingRate]
+    rateValue = rateMapInverse[(linkSettings.modulationType, linkSettings.codingRate)]
     signalBits.extend(int_to_bits(rateCodeword[rateValue], 4))
     signalBits.append(0)  # reserved
     signalBits.extend(int_to_bits(psduLengthOctets, 12))
@@ -47,6 +50,9 @@ def decode_signal_header(
     """Inverse of create_signal_header: OFDM demod -> (optional LTF equalize)
     -> BPSK demap -> deinterleave -> Viterbi decode (R=1/2, nothing punctured)
     -> RATE/LENGTH/parity.
+
+    On success, updates linkSettings modulation/coding to the decoded RATE
+    (mirrors C++ decode_signal_header).
 
     H — optional LTF-derived channel estimate (see sync_module); the SIGNAL
         symbol rides through the same channel as the DATA field, so it must
@@ -81,11 +87,20 @@ def decode_signal_header(
     parityBit = decodedBits[17]
 
     rateCodewordBits = sum(int(b) << i for i, b in enumerate(rateBits))
+    if rateCodewordBits not in rateCodewordToValue:
+        raise ValueError(
+            f"Invalid SIGNAL RATE codeword 0b{rateCodewordBits:04b} "
+            f"({rateCodewordBits}); expected one of "
+            f"{sorted(f'0b{c:04b}' for c in rateCodewordToValue)}"
+        )
     modulationType, codingRate = rateMap[rateCodewordToValue[rateCodewordBits]]
     psduLengthOctets = sum(int(b) << i for i, b in enumerate(lengthBits))
 
     expectedParity = sum(decodedBits[:17]) % 2
     if expectedParity != parityBit:
         raise ValueError("SIGNAL field parity check failed")
+
+    linkSettings.change_modulation_type(modulationType)
+    linkSettings.change_coding_rate(codingRate)
 
     return modulationType, codingRate, psduLengthOctets

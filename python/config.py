@@ -53,12 +53,24 @@ rateCodeword = {
     8: 0b1100,  # 54 Mb/s: R1..R4 = 0,0,1,1
 }
 
-rateCodewordToValue = {codeword: value for value, codeword in rateCodeword.items()}
+# Explicit inverse (same as C++ rateCodewordToValue) — do not derive via
+# comprehension alone so the Table-78 mapping stays reviewable side-by-side.
+rateCodewordToValue = {
+    0b1011: 1,
+    0b1111: 2,
+    0b1010: 3,
+    0b1110: 4,
+    0b1001: 5,
+    0b1101: 6,
+    0b1000: 7,
+    0b1100: 8,
+}
 
 
 @dataclass
 class LinkSettings:
     modulationType: str = ModulationTypes.BPSK
+    codingRate: str = CodingRates.R12
     errorCorrectingCode: int = 7
     numSubcarriers: int = 52
     numPilots: int = 4
@@ -75,8 +87,19 @@ class LinkSettings:
         ModulationTypes.QAM16: 4,
         ModulationTypes.QAM64: 6,
     })
-    sampleRate: float = 20e6 # Sample Rate for 802.11a, NOT TUNABLE
+    sampleRate: float = 20e6  # Sample Rate for 802.11a, NOT TUNABLE
 
     def __post_init__(self):
         self.T = self.ofdmSymbolDuration - self.guardInterval
-        self.NCPBS = self.bitPerSubcarrier[self.modulationType] * (self.numSubcarriers - self.numPilots)
+        self.NCPBS = self.bitPerSubcarrier[self.modulationType] * (
+            self.numSubcarriers - self.numPilots
+        )
+
+    def change_modulation_type(self, modulation_type: str) -> None:
+        self.modulationType = modulation_type
+        self.NCPBS = self.bitPerSubcarrier[self.modulationType] * (
+            self.numSubcarriers - self.numPilots
+        )
+
+    def change_coding_rate(self, coding_rate: str) -> None:
+        self.codingRate = coding_rate

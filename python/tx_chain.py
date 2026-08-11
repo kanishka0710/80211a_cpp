@@ -1,5 +1,4 @@
 import numpy as np
-from math import ceil
 
 from config import LinkSettings, ModulationTypes, CodingRates
 from fec_module import perform_FEC_data_field, compute_ndbps
@@ -24,25 +23,29 @@ def generate_tx_signal(
     modulation      — ModulationTypes constant
     coding_rate     — CodingRates constant
     scrambler_seed  — 7-bit non-zero seed for the data scrambler
-    link            — optional LinkSettings; created from modulation if None
+    link            — optional LinkSettings; created from modulation/coding if None
 
     Returns (tx_signal, link) where tx_signal is:
         [preamble (320 samples)] + [SIGNAL field (80 samples)] + [OFDM data symbols]
     """
     if link is None:
-        link = LinkSettings(modulationType=modulation)
+        link = LinkSettings(modulationType=modulation, codingRate=coding_rate)
+    else:
+        # Keep link's RATE fields consistent with the args used for the DATA field.
+        link.change_modulation_type(modulation)
+        link.change_coding_rate(coding_rate)
 
     n_data_sc = link.numSubcarriers - link.numPilots   # 48
-    n_bpsc    = link.bitPerSubcarrier[modulation]
+    n_bpsc    = link.bitPerSubcarrier[link.modulationType]
     n_cbps    = n_bpsc * n_data_sc
 
     # 1. FEC: build the DATA field (SERVICE + PSDU + TAIL + PAD, 17.3.5),
     #    scramble → convolutional encode → puncture. N_PAD is solved so the
     #    coded output lands on an exact multiple of N_CBPS, so no separate
     #    padding step is needed afterward.
-    n_dbps   = compute_ndbps(n_cbps, coding_rate)
+    n_dbps   = compute_ndbps(n_cbps, link.codingRate)
     fec_bits = np.array(
-        perform_FEC_data_field(bits, coding_rate, scrambler_seed, n_dbps), dtype=int
+        perform_FEC_data_field(bits, link.codingRate, scrambler_seed, n_dbps), dtype=int
     )
 
     num_ofdm_symbols = len(fec_bits) // n_cbps
@@ -54,7 +57,9 @@ def generate_tx_signal(
         interleaved[i * n_cbps : (i + 1) * n_cbps] = interleave(block, n_cbps, n_bpsc)
 
     # 3. Constellation mapping
-    symbols = np.array(map_bits_to_constellation(list(interleaved), modulation, n_bpsc))
+    symbols = np.array(
+        map_bits_to_constellation(list(interleaved), link.modulationType, n_bpsc)
+    )
 
     # 4. OFDM modulate (pilots + IFFT + cyclic prefix)
     ofdm     = OFDMModule(link)
@@ -63,8 +68,8 @@ def generate_tx_signal(
     # 5. Prepend preamble (STF + LTF = 320 samples)
     preamble = PreambleModule(link).generate_preamble()
 
-    # 6. Prepend signal header (RATE + LENGTH for the DATA field that follows)
-    signal_header = create_signal_header(link, coding_rate, len(bits) // 8)
+    # 6. Prepend SIGNAL header (RATE + LENGTH from link settings)
+    signal_header = create_signal_header(link, len(bits) // 8)
 
     tx_signal = np.concatenate([preamble, signal_header, ofdm_sig])
     return tx_signal, link

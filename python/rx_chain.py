@@ -56,7 +56,7 @@ def receive(
     modulation     — ModulationTypes constant (must match TX)
     coding_rate    — CodingRates constant (must match TX)
     scrambler_seed — 7-bit seed (must match TX)
-    link           — optional LinkSettings; created from modulation if None
+    link           — optional LinkSettings; created from modulation/coding if None
 
     Returns (rx_bits, sync_result, equalized_symbols).
 
@@ -74,10 +74,17 @@ def receive(
         → trim to the PSDU length carried in the SIGNAL field
     """
     if link is None:
-        link = LinkSettings(modulationType=modulation)
+        link = LinkSettings(modulationType=modulation, codingRate=coding_rate)
+    else:
+        link.change_modulation_type(modulation)
+        link.change_coding_rate(coding_rate)
+
+    # Snapshot of the caller-expected RATE before decode_signal_header mutates link.
+    expected_modulation = link.modulationType
+    expected_coding_rate = link.codingRate
 
     Fs        = link.nFFT / link.T
-    n_bpsc    = link.bitPerSubcarrier[modulation]
+    n_bpsc    = link.bitPerSubcarrier[link.modulationType]
     n_data_sc = link.numSubcarriers - link.numPilots   # 48
     n_cbps    = n_bpsc * n_data_sc
 
@@ -91,13 +98,17 @@ def receive(
     # 3. Strip preamble and decode the SIGNAL field (RATE + LENGTH, always BPSK R=1/2)
     signal_start = sync.packet_start + PREAMBLE_LEN
     signal_field = corrected[signal_start : signal_start + SIGNAL_LEN]
-    sig_modulation, sig_coding_rate, psdu_length_octets = decode_signal_header(
-        link, signal_field, sync.H
+    # Scratch copy so decode can update RATE fields without clobbering expected rate.
+    signal_link = LinkSettings(
+        modulationType=link.modulationType, codingRate=link.codingRate
     )
-    if (sig_modulation, sig_coding_rate) != (modulation, coding_rate):
+    sig_modulation, sig_coding_rate, psdu_length_octets = decode_signal_header(
+        signal_link, signal_field, sync.H
+    )
+    if (sig_modulation, sig_coding_rate) != (expected_modulation, expected_coding_rate):
         raise ValueError(
             f"SIGNAL field mismatch: decoded ({sig_modulation}, {sig_coding_rate}) "
-            f"!= expected ({modulation}, {coding_rate})"
+            f"!= expected ({expected_modulation}, {expected_coding_rate})"
         )
 
     # 4. Strip SIGNAL field, leaving the DATA field
@@ -111,7 +122,9 @@ def receive(
     equalized = _equalize_with_ltf(ofdm_result.freqBins, sync.H, link)
 
     # 7. Hard-decision constellation de-mapping → bits
-    detected_bits = map_constellation_to_bits(list(equalized), modulation, n_bpsc)
+    detected_bits = map_constellation_to_bits(
+        list(equalized), link.modulationType, n_bpsc
+    )
 
     # 8. De-interleave per OFDM symbol block
     num_symbols   = len(detected_bits) // n_cbps
@@ -123,7 +136,7 @@ def receive(
         )
 
     # 9. FEC RX: depuncture → Viterbi → descramble → strip the 16-bit SERVICE field
-    rx_bits = perform_FEC_data_field_RX(deinterleaved, coding_rate, scrambler_seed)
+    rx_bits = perform_FEC_data_field_RX(deinterleaved, link.codingRate, scrambler_seed)
 
     # 10. Trim tail/pad using the PSDU length carried in the SIGNAL field
     rx_bits = np.array(rx_bits, dtype=int)[: psdu_length_octets * 8]
