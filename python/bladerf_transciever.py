@@ -1,6 +1,7 @@
 from bladerf import _bladerf as bladerf
 import numpy as np
 import threading
+import time
 import matplotlib.pyplot as plt
 
 from config import ModulationTypes, CodingRates, LinkSettings
@@ -9,29 +10,15 @@ from rx_chain import receive
 from modulation_module import map_bits_to_constellation
 
 # --- Packet parameters ---
-MODULATION = ModulationTypes.BPSK
-CODING_RATE = CodingRates.R12
+MODULATION = ModulationTypes.QAM64
+CODING_RATE = CodingRates.R23
 NUM_BITS = 1024          # PSDU payload bits (must be multiple of 8)
 SCRAMBLER_SEED = 0x5D
 SAMPLE_RATE = 20e6       # 802.11a baseband rate (not tunable in this stack)
-PAD_FRONT = 2048       # RX samples captured before the scheduled TX burst
-PAD_BACK = 2048         # RX samples captured after the scheduled TX burst
+PAD_FRONT = 25000       # RX samples captured before the scheduled TX burst
+PAD_BACK = 25000       # RX samples captured after the scheduled TX burst
 
 # --- TX/RX timing coordination ---
-# TX and RX run as independent host threads, so there is no guarantee that
-# sync_tx()/sync_rx() actually start moving samples at the same wall-clock
-# instant: Python thread scheduling jitter and the (asymmetric, multi-ms)
-# first-call USB stream spin-up cost for each direction can easily exceed the
-# whole burst duration. Left alone, that means the TX burst can fire before
-# RX has actually started capturing (or after it has stopped), so RX would
-# only ever see noise -- independent of RF gain/antenna setup.
-#
-# Fix: use the bladeRF's own hardware sample-timestamp counters (one per
-# direction, both driven by the same sample clock) to schedule the TX burst
-# and the RX capture window at explicit FPGA sample counts, via the
-# SC16_Q11_META streaming format. The FPGA -- not the host -- then gates
-# when samples actually go out/come in, so host scheduling jitter no longer
-# matters as long as SCHEDULE_LEAD_MS comfortably exceeds it.
 SCHEDULE_LEAD_MS = 50    # how far in the future (from "now") to schedule the burst
 LEAD_SAMPLES = int(SCHEDULE_LEAD_MS * 1e-3 * SAMPLE_RATE)
 
@@ -43,16 +30,38 @@ META_FLAG_TX_BURST_END = 1 << 1
 # --- Open device ---
 d = bladerf.BladeRF()
 
+# --- Loopback ---
+LOOPBACK = bladerf.Loopback.Disabled  # None => auto-pick; or set e.g. bladerf.Loopback.RFIC_BIST
+
 # --- Configure RX1 ---
-# NOTE: AGC (GainMode.Default -> SlowAttack_AGC on bladeRF 2.0) needs time to
-# settle and is meant for continuously-present signals. A single ~400us burst
-# capture never gives it a chance to lock, so it just cranks gain toward max
-# trying to find something -- which looks like full-scale noise the whole
-# time, independent of when TX actually fires. Use Manual gain for bursts.
-RX_GAIN = 30   # dB, manual gain range is roughly -15..60 on bladeRF 2.0 -- tune this
-TX_GAIN = 10   # dB, manual gain range is roughly -15..60 on bladeRF 2.0 -- tune this
+RX_GAIN = 40   # dB, manual gain range is roughly -15..60 on bladeRF 2.0
+TX_GAIN = 10    # dB
 
 rx_ch = d.Channel(bladerf.CHANNEL_RX(0))
+tx_ch = d.Channel(bladerf.CHANNEL_TX(0))
+
+# Ensure modules are off before changing loopback (API requirement).
+rx_ch.enable = False
+tx_ch.enable = False
+
+if LOOPBACK is None:
+    for candidate in (
+        bladerf.Loopback.RFIC_BIST,  # bladeRF 2 / micro
+        bladerf.Loopback.Firmware,   # exact digital sample loop (FX3)
+        bladerf.Loopback.RF_LNA1,    # bladeRF 1 RF loopback
+    ):
+        if d.is_loopback_mode_supported(candidate):
+            LOOPBACK = candidate
+            break
+    if LOOPBACK is None:
+        raise RuntimeError("No supported internal loopback mode on this device")
+
+if not d.is_loopback_mode_supported(LOOPBACK):
+    raise RuntimeError(f"Loopback mode {LOOPBACK} is not supported on this device")
+
+d.set_loopback(LOOPBACK)
+print(f"Loopback: requested={LOOPBACK}  actual={d.get_loopback()}")
+
 rx_ch.frequency = 900e6
 rx_ch.sample_rate = SAMPLE_RATE
 rx_ch.bandwidth = 20e6
@@ -60,7 +69,6 @@ rx_ch.gain_mode = bladerf.GainMode.Manual
 rx_ch.gain = RX_GAIN
 
 # --- Configure TX1 ---
-tx_ch = d.Channel(bladerf.CHANNEL_TX(0))
 tx_ch.frequency = 900e6
 tx_ch.sample_rate = SAMPLE_RATE
 tx_ch.bandwidth = 20e6
@@ -209,8 +217,23 @@ if thread_errors:
         ) from thread_errors[0]
     raise thread_errors[0]
 
+# Do not disable TX until the scheduled burst has actually left the FPGA
+# (sync_tx returning only means samples are queued). See
+# https://nuand.com/bladeRF-doc/libbladeRF/v2.6.0/sync_tx_meta_bursts.html
+tx_done_ts = tx_fire_ts + tx_num_samples + 8192
+t0 = time.monotonic()
+while get_timestamp(bladerf.Direction.TX) < tx_done_ts:
+    if time.monotonic() - t0 > 2.0:
+        print(
+            f"Warning: TX timestamp never reached {tx_done_ts} "
+            f"(now={get_timestamp(bladerf.Direction.TX)})"
+        )
+        break
+    time.sleep(0.01)
+
 rx_ch.enable = False
 tx_ch.enable = False
+d.set_loopback(bladerf.Loopback.Disabled)
 d.close()
 
 # Convert received samples back to complex
@@ -223,24 +246,6 @@ dc_offset = np.mean(rx_complex)
 rx_complex = rx_complex - dc_offset
 print(f"RX DC offset: {dc_offset.real:.2f} + {dc_offset.imag:.2f}j")
 print("RX power:", float(np.mean(np.abs(rx_complex) ** 2)))
-
-# Sanity checks to help pick RX_GAIN empirically:
-noise_region = np.concatenate([rx_complex[:packet_start], rx_complex[packet_end:]])
-noise_floor = float(np.mean(np.abs(noise_region)))
-burst_region = rx_complex[packet_start:packet_end]
-burst_level = float(np.mean(np.abs(burst_region))) if burst_region.size else 0.0
-clipped_frac = float(np.mean(np.abs(rx_complex) >= 2040))
-print(f"RX noise floor (outside TX window): {noise_floor:.1f}")
-print(f"RX level during TX window        : {burst_level:.1f}  "
-      f"(ratio to noise floor: {burst_level / max(noise_floor, 1e-6):.2f}x)")
-print(f"RX samples near full-scale (>=2040): {clipped_frac * 100:.2f}%")
-if clipped_frac > 0.01:
-    print("  -> RX is clipping. Lower RX_GAIN (and/or TX_GAIN if TX is overdriving RX).")
-elif burst_level < 1.5 * noise_floor:
-    print("  -> Burst is barely/not above the noise floor. Raise RX_GAIN or TX_GAIN, "
-          "or move antennas closer / check antenna connections.")
-else:
-    print("  -> Burst appears distinguishable from the noise floor. Good sign.")
 
 # --- Decode RX ---
 sync = None
