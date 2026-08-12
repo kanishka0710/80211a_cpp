@@ -58,11 +58,15 @@ class SimMedium:
         snr_db: float = 30.0,
         p_loss: float = 0.0,
         seed: int = 0,
+        max_delay_samples: int = 0,
     ) -> None:
         self.phy = phy if phy is not None else PhySap()
         self.mode = mode
         self.snr_db = snr_db
         self.p_loss = p_loss
+        # Random pre-pad before decode (0 = off). Non-zero stress-tests sync but
+        # raises PER on long MSDUs; keep 0 for reliable file-transfer sims.
+        self.max_delay_samples = max_delay_samples
         self.rng = np.random.default_rng(seed)
 
         self._now_us: float = 0.0
@@ -222,13 +226,14 @@ class SimMedium:
 
         # AWGN path through the real PHY
         noisy = add_awgn(job.samples, self.snr_db, self.rng)
-        # Small delay padding helps sync (mirrors loopback_test)
-        delay = int(self.rng.integers(0, 64))
-        if delay > 0:
-            pad = (
-                self.rng.standard_normal(delay) + 1j * self.rng.standard_normal(delay)
-            ) / np.sqrt(2)
-            noisy = np.concatenate([pad, noisy])
+        if self.max_delay_samples > 0:
+            delay = int(self.rng.integers(0, self.max_delay_samples + 1))
+            if delay > 0:
+                pad = (
+                    self.rng.standard_normal(delay)
+                    + 1j * self.rng.standard_normal(delay)
+                ) / np.sqrt(2)
+                noisy = np.concatenate([pad, noisy])
 
         bits = self.phy.decode(noisy)
         if bits is None:

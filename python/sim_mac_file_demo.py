@@ -50,7 +50,7 @@ def run_demo(
     chunk_size: int = MAX_MSDU_OCTETS,
     busy_us: float = 200.0,
     mode: DeliveryMode = DeliveryMode.AWGN,
-    snr_db: float = 30.0,
+    snr_db: float = 50.0,
     p_loss: float = 0.0,
     seed: int = 1,
     max_time_us: float = 60_000_000.0,
@@ -143,7 +143,12 @@ def main() -> None:
     p.add_argument("--busy-us", type=float, default=200.0)
     p.add_argument("--bernoulli", action="store_true", help="skip PHY; use drop model")
     p.add_argument("--p-loss", type=float, default=0.0)
-    p.add_argument("--snr-db", type=float, default=30.0)
+    p.add_argument(
+        "--snr-db",
+        type=float,
+        default=50.0,
+        help="AWGN SNR in dB (default 50; long MSDUs need more margin than tiny demos)",
+    )
     p.add_argument("--seed", type=int, default=1)
     p.add_argument(
         "--max-time-us",

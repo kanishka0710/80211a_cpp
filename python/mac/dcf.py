@@ -4,6 +4,8 @@ from collections import deque
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Callable
 
+import numpy as np
+
 from mac.constants import (
     ACK_TIMEOUT_US,
     CW_MAX,
@@ -39,11 +41,17 @@ class DcfStation:
         phy: PhySap,
         *,
         on_msdu_rx: Callable[[bytes, bytes, int], None] | None = None,
+        seed: int | None = None,
     ) -> None:
         self.address = address
         self.medium = medium
         self.phy = phy
         self.on_msdu_rx = on_msdu_rx  # (sa, payload, seq) when a data frame is accepted
+
+        # Dedicated RNG for backoff — must not share medium.rng (AWGN consumes it).
+        self.rng = np.random.default_rng(
+            seed if seed is not None else int.from_bytes(address[-4:], "big")
+        )
 
         self.state = DcfState.IDLE
         self.cw = CW_MIN
@@ -53,6 +61,7 @@ class DcfStation:
         self.current_mpdu: bytes | None = None
         self._ack_timeout_token = 0  # invalidate stale timeouts
         self._difs_token = 0
+        self._idle_poll_token = 0
         self.stats = {
             "tx_attempts": 0,
             "tx_success": 0,
@@ -70,6 +79,8 @@ class DcfStation:
             self._kick_tx()
 
     def _kick_tx(self) -> None:
+        if self.state in (DcfState.TX, DcfState.WAIT_ACK):
+            return
         if self.current_mpdu is None:
             if not self.tx_queue:
                 self.state = DcfState.IDLE
@@ -82,16 +93,31 @@ class DcfStation:
             self.on_channel_idle_edge()
         else:
             self.state = DcfState.IDLE
+            self._wait_idle_then_retry()
 
-            def _poll() -> None:
-                if self.medium.is_idle():
-                    self.on_channel_idle_edge()
-                else:
-                    self.medium.schedule(SLOT_US, _poll)
+    def _wait_idle_then_retry(self) -> None:
+        """Poll until CCA idle, then resume DIFS. Token drops stale poll chains."""
+        self._idle_poll_token += 1
+        token = self._idle_poll_token
 
-            self.medium.schedule(SLOT_US, _poll)
+        def _poll() -> None:
+            if token != self._idle_poll_token:
+                return
+            if self.state in (DcfState.TX, DcfState.WAIT_ACK):
+                return
+            if self.current_mpdu is None and not self.tx_queue:
+                return
+            if self.medium.is_idle():
+                self.on_channel_idle_edge()
+            else:
+                self.medium.schedule(SLOT_US, _poll)
+
+        self.medium.schedule(SLOT_US, _poll)
 
     def on_channel_idle_edge(self) -> None:
+        # Do not clobber an in-flight TX / ACK wait (stale idle-poll race).
+        if self.state in (DcfState.TX, DcfState.WAIT_ACK):
+            return
         if self.current_mpdu is None and not self.tx_queue:
             self.state = DcfState.IDLE
             return
@@ -100,21 +126,13 @@ class DcfStation:
         self._difs_token += 1
         token = self._difs_token
 
-        def _wait_idle_then_retry() -> None:
-            def _poll() -> None:
-                if self.medium.is_idle():
-                    self.on_channel_idle_edge()
-                else:
-                    self.medium.schedule(SLOT_US, _poll)
-            self.medium.schedule(SLOT_US, _poll)
-
         def _schedule_slot() -> None:
             def _slot() -> None:
                 if self.state != DcfState.BACKOFF:
                     return
                 if not self.medium.is_idle():
                     self.state = DcfState.IDLE
-                    _wait_idle_then_retry()
+                    self._wait_idle_then_retry()
                     return
                 self.on_slot()
                 if self.state == DcfState.BACKOFF:
@@ -124,19 +142,30 @@ class DcfStation:
         def _difs_done() -> None:
             if token != self._difs_token:
                 return
+            if self.state in (DcfState.TX, DcfState.WAIT_ACK):
+                return
             if not self.medium.is_idle():
-                _wait_idle_then_retry()
+                self._wait_idle_then_retry()
                 return
             if self.backoff_slots is None:
-                self.backoff_slots = int(self.medium.rng.integers(0, self.cw + 1))
+                # Uniform in [0, CW] inclusive — 0 means TX immediately after DIFS.
+                self.backoff_slots = int(self.rng.integers(0, self.cw + 1))
             self.state = DcfState.BACKOFF
-            _schedule_slot()
+            if self.backoff_slots == 0:
+                self.start_tx()
+            else:
+                _schedule_slot()
 
         self.medium.schedule(DIFS_US, _difs_done)
 
 
     def on_slot(self) -> None:
-        self.backoff_slots -= 1
+        # Decrement only while > 0. A drawn backoff of 0 must TX, not wrap to -1
+        # (that used to leave the station stuck in BACKOFF forever).
+        if self.backoff_slots is None:
+            return
+        if self.backoff_slots > 0:
+            self.backoff_slots -= 1
         if self.backoff_slots == 0:
             self.start_tx()
 
@@ -144,6 +173,9 @@ class DcfStation:
         if self.current_mpdu is None:
             return
         self.state = DcfState.TX
+        # Cancel any pending DIFS / idle-poll chains.
+        self._difs_token += 1
+        self._idle_poll_token += 1
         self.stats["tx_attempts"] += 1
 
         samples, airtime = encode_mpdu(self.phy, self.current_mpdu)
@@ -206,7 +238,10 @@ class DcfStation:
         ack_mpdu = pack_ack(sa)
 
         def _send_ack() -> None:
+            # If something else grabbed the channel, retry next SIFS rather than
+            # silently dropping the ACK (sender would only see a timeout).
             if not self.medium.is_idle():
+                self.medium.schedule(SIFS_US, _send_ack)
                 return
             samples, airtime = encode_mpdu(self.phy, ack_mpdu)
             self.medium.transmit(

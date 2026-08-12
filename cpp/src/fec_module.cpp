@@ -33,11 +33,6 @@ namespace wifi80211a
         // Step 1 — Scrambler
         std::vector<int> scrambled_bits = scramble_(data_bits, scrambler_seed_7bit);
 
-        // Step 1b — Pad (before the 6 tail bits) so the mother-coded stream ends
-        // up an exact multiple of the puncture pattern's block size. Without
-        // this, puncture_() reads past the end of the mother-coded stream
-        // whenever (data_bits.size() + 6) isn't already a multiple of the
-        // period, corrupting the bitstream fed into constellation mapping.
         constexpr int kTailBits = 6;
         const int period = input_period_for_puncture_(coding_rate);
         const int remainder = (static_cast<int>(scrambled_bits.size()) + kTailBits) % period;
@@ -278,11 +273,6 @@ namespace wifi80211a
             pathMetrics = newMetric;
         }
 
-        // Traceback from whichever state has the lowest final path metric,
-        // rather than assuming the trellis is known to terminate at state 0.
-        // This is correct both when the tail truly is the last bit (e.g.
-        // the SIGNAL field) and when scrambled PAD bits follow the tail
-        // (17.3.5.4), which leaves the true final state unknown/non-zero.
         int state = 0;
         for (int s = 1; s < num_states; s++) {
             if (pathMetrics[s] < pathMetrics[state]) state = s;

@@ -24,10 +24,6 @@ namespace wifi80211a
         const std::vector<int> pilot_positions = link_settings.getPilotPositions();
         const std::set<int> pilot_set(pilot_positions.begin(), pilot_positions.end());
 
-        // fftw_complex is a raw double[2] array type, which recent libc++ versions
-        // reject as a std::vector element type. C++11 guarantees std::complex<double>
-        // has the same layout as double[2], so we operate on complexVector directly
-        // and reinterpret_cast when handing buffers to FFTW.
         complexVector in(nFFT), out(nFFT);
         complexVector output_ofdm_waveform;
         fftw_plan plan = fftw_plan_dft_1d(nFFT,
@@ -97,11 +93,6 @@ namespace wifi80211a
         const int num_ofdm_blocks = static_cast<int>(data.size()) / ofdm_block_size;
 
         const std::vector<int> pilot_positions = linkSettings.getPilotPositions();
-
-        // fftw_complex is a raw double[2] array type, which recent libc++ versions
-        // reject as a std::vector element type. C++11 guarantees std::complex<double>
-        // has the same layout as double[2], so we operate on complexVector directly
-        // and reinterpret_cast when handing buffers to FFTW.
         complexVector in(nFFT), out(nFFT);
         OFDMDemodResult result;
         result.freq_bins.reserve(static_cast<std::size_t>(num_ofdm_blocks) * static_cast<std::size_t>(nFFT));

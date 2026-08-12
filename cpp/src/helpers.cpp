@@ -17,10 +17,6 @@ namespace wifi80211a
         return std::abs(a - b) < epsilon;
     }
 
-    // fftw_complex is a raw double[2] array type, which recent libc++ versions
-    // reject as a std::vector element type. C++11 guarantees std::complex<double>
-    // has the same layout as double[2], so we operate on complexVector directly
-    // and reinterpret_cast when handing buffers to FFTW.
     complexVector inverse_fft(const complexVector& freq_domain, const int nFFT)
     {
         complexVector in(freq_domain.begin(), freq_domain.begin() + nFFT);
